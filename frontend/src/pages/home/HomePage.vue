@@ -40,12 +40,11 @@ import { reactive, onMounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getCurrentUser } from '@/api/frappe'
+import { backendLabel } from '@/config/backend'
 
 const auth = useAuthStore()
 
-const backend = import.meta.env.DEV
-  ? `${import.meta.env.VITE_PROXY_TARGET || 'https://erp.pranera.in'} (dev proxy)`
-  : window.location.origin
+const backend = backendLabel()
 
 const check = reactive({ state: 'loading', user: '', error: '' })
 

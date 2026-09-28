@@ -3,7 +3,7 @@
 Planning module for erp.pranera.in. A Vue 3 single-page app served by Frappe at
 `/planning-app`, plus the Frappe app that will own the planning DocTypes.
 
-## Run locally (against the live ERP)
+## Run locally
 
 ```bash
 cd frontend
@@ -11,18 +11,24 @@ yarn install
 yarn dev            # http://localhost:3001
 ```
 
-The dev server proxies `/api`, `/assets`, `/files` and `/private` to
-`https://erp.pranera.in`, so you sign in with your normal ERPNext account and
-work with live data. Runs alongside pranera_knit (port 3000); the login cookie
-is shared between them.
+The dev server forwards `/api`, `/assets`, `/files` and `/private` to one of two backends,
+and **you choose which in the app**: the **Settings** page (menu -> System -> Settings) or
+the switch under the login form. A LIVE / LOCAL badge in the header shows which one you're
+on, and takes you to Settings when clicked.
 
-To test backend code that isn't deployed yet, point at your local bench:
+| Backend | Goes to | Use it for |
+|---|---|---|
+| **LIVE** | `https://erp.pranera.in` | Real data. pranera_planning is not deployed there yet. |
+| **LOCAL** | `http://127.0.0.1:8001` | Testing new code. Run `bench --site pranera.com serve --port=8001`. |
 
-```bash
-cp .env.example .env.local     # then set VITE_PROXY_TARGET=http://127.0.0.1:8001
-```
+Switching signs you out of the backend you're leaving and returns you to the login page —
+the two sites have separate users and sessions. No restart of `yarn dev` is needed. The
+Settings page also shows, for the backend you're on, whether pranera_planning and the
+Project Stock Reservation doctype are actually installed there.
 
-`.env.local` is git-ignored, so nothing needs reverting before you commit.
+The choice is a cookie on `localhost`, read by `frontend/dev-backend-proxy.js`. It exists only
+in the dev server: a production build contains no trace of it and talks to its own origin.
+`.env.example` lists the optional defaults.
 
 ## Layout
 
@@ -52,16 +58,25 @@ Ship them in this app (`pranera_planning/planning/doctype/<name>/`) so they are
 versioned in git and applied by `bench migrate` on deploy. Create them on the
 local bench with developer mode on, then commit the generated files.
 
-## Yarn reservation
+## Stock reservation
 
-Page: `/planning-app/yarn-reservation`. Pick a purchase project, see each yarn batch bought
-under it, and reserve quantity for another project's production. A reservation is a
-`Yarn Reservation` document (one per batch per production project).
+Page: `/planning-app/project-stock-reservation` (menu: Planning -> Stock Reservation). Pick a
+purchase project, see each batch bought under it, and reserve quantity for another project's
+production. Works for any batch-tracked item — yarn, fabric at any stage, chemicals, finished
+goods. A reservation is a `Project Stock Reservation` document (one active row per batch per
+production project per Sales Order; `sales_order` is blank for pooled reservations).
+
+If you ask for more than is available, the reservation is **capped** to what's available rather
+than refused, and `requested_qty` keeps the original ask visible. Only a batch with nothing left
+is refused. Reducing `reserved_qty` later is just an edit — it can't go below what has already
+been issued against it.
 
 The rule is enforced on Stock Entry `validate` (`reservation.py`) for Material Transfer for
 Manufacture, Manufacture and Send to Subcontractor: an issue of qty `q` to project `P` is
-refused unless `q <= free + still-reserved-for-P`. Batches with no active reservation are
-never touched, and a bug in the check fails open (logged) instead of blocking the floor.
+refused unless `q <= free + still-reserved-for-P`. This covers Work Order, Job Card and
+Subcontracting Order flows alike, since none of them moves stock itself — each triggers one of
+these Stock Entries. Batches with no active reservation are never touched, and a bug in the
+check fails open (logged) instead of blocking the floor.
 
 Definitions:
 - **In stores**: stock in warehouses other than `WIP*`, `SUB*`, `Direct Delivery*`
@@ -74,14 +89,16 @@ Site config (`site_config.json`), all optional:
 
 | key | default | effect |
 |---|---|---|
-| `yarn_reservation_enforcement` | `1` | `0` turns the Stock Entry check off, no redeploy |
-| `yarn_reservation_excluded_warehouse_prefixes` | `["WIP","SUB","Direct Delivery"]` | warehouses that do not count as issuable stock |
+| `project_stock_reservation_enforcement` | `1` | `0` turns the Stock Entry check off, no redeploy |
+| `project_stock_reservation_excluded_warehouse_prefixes` | `["WIP","SUB","Direct Delivery"]` | warehouses that do not count as issuable stock |
 
-Known limits: yarn returned from WIP to stores does not restore a reservation; plain
+Known limits: stock returned from WIP to stores does not restore a reservation; plain
 Material Transfer / Material Issue are not checked; a Subcontracting Order whose items span
 several projects cannot be attributed to one project, so it is not checked.
 
-Tests: `python -m unittest pranera_planning.tests.test_reservation_math`
+Tests (pure Python, no site needed): `python -m unittest pranera_planning.tests.test_reservation_math`,
+or on a bench with `allow_tests` enabled:
+`bench --site pranera.com run-tests --module pranera_planning.tests.test_reservation_math`
 
 ## Deploy
 

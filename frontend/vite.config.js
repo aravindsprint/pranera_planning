@@ -1,14 +1,19 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { backendProxyPlugin } from './dev-backend-proxy.js'
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, __dirname, '')
-  // Dev-server only — `vite build` never reads `server.proxy`. In production the
-  // app is served by Frappe from the same origin as the API, so no proxy exists.
-  const target = env.VITE_PROXY_TARGET || 'https://erp.pranera.in'
-
-  const passthrough = { target, changeOrigin: true, secure: false }
+  // Dev-server only. The dev server can forward to the live site or to your local bench;
+  // which one is decided per request by the Settings page (see dev-backend-proxy.js), so
+  // switching never needs a restart. Production is served by Frappe from the same origin
+  // as the API — no proxy exists there.
+  const LIVE = env.VITE_LIVE_TARGET || 'https://erp.pranera.in'
+  const LOCAL = env.VITE_LOCAL_TARGET || 'http://127.0.0.1:8001'
+  // Used until the Settings page has picked one (i.e. no cookie yet).
+  const DEFAULT_BACKEND = env.VITE_DEFAULT_BACKEND === 'local' ? 'local' : 'live'
+  const serving = command === 'serve'
 
   return {
     // Dev: served from '/'.  Build: served by Frappe from the app's public/ folder.
@@ -22,41 +27,6 @@ export default defineConfig(({ command, mode }) => {
       // 3001 so it can run beside pranera_knit (3000). Cookies are shared across
       // localhost ports, so logging in on one also logs you in on the other.
       port: 3001,
-      proxy: command === 'serve' ? {
-        '/api': {
-          ...passthrough,
-          ws: true,
-          // Cookies come back scoped to the ERP host; re-scope to localhost.
-          cookieDomainRewrite: 'localhost',
-          headers: { Origin: target, Referer: target },
-          configure(proxy) {
-            // node-http-proxy can forward a stray `Expect` header on body-less
-            // POSTs (e.g. logout). nginx in front of erp.pranera.in answers that
-            // with 417 Expectation Failed and never runs the request.
-            // Strip it on 'start', i.e. BEFORE the upstream request is built.
-            // (pranera_knit does this in 'proxyReq' via removeHeader, which is
-            // too late on current Node: the header is already flushed by then.)
-            proxy.on('start', (req) => {
-              delete req.headers['expect']
-            })
-            // Frappe marks `sid` as Secure because erp.pranera.in is HTTPS, but
-            // the dev server is plain http://localhost — browsers silently drop
-            // Secure cookies there, so login "succeeds" and the session never
-            // sticks. Strip Secure (dev only) so the cookie is actually stored.
-            proxy.on('proxyRes', (proxyRes) => {
-              const setCookie = proxyRes.headers['set-cookie']
-              if (setCookie) {
-                proxyRes.headers['set-cookie'] = setCookie.map((c) =>
-                  c.replace(/;\s*Secure/gi, '').replace(/;\s*SameSite=None/gi, '; SameSite=Lax')
-                )
-              }
-            })
-          },
-        },
-        '/assets': passthrough,
-        '/files': passthrough,
-        '/private': passthrough,
-      } : undefined,
     },
 
     build: {
@@ -77,6 +47,17 @@ export default defineConfig(({ command, mode }) => {
       },
     },
 
-    plugins: [vue()],
+    // Read by src/config/backend.js. null in a production build, so nothing about the
+    // dev backends (or that a switch exists) ships to erp.pranera.in.
+    define: {
+      __PP_BACKENDS__: serving
+        ? JSON.stringify({ default: DEFAULT_BACKEND, targets: { live: LIVE, local: LOCAL } })
+        : 'null',
+    },
+
+    plugins: [
+      vue(),
+      ...(serving ? [backendProxyPlugin({ targets: { live: LIVE, local: LOCAL }, defaultBackend: DEFAULT_BACKEND })] : []),
+    ],
   }
 })

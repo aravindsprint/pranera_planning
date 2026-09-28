@@ -30,6 +30,15 @@ export const pages = [
     component: () => import('@/pages/project-stock-reservation/ProjectStockReservationPage.vue'),
   },
 
+  {
+    path: 'settings',
+    title: 'Settings',
+    icon: 'pi pi-cog',
+    section: 'System',
+    nav: true,
+    component: () => import('@/pages/settings/SettingsPage.vue'),
+  },
+
   // ── Add pages below ────────────────────────────────────────────────────────
   // {
   //   path: 'production-plan',

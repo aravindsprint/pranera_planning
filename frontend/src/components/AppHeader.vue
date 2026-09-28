@@ -44,6 +44,11 @@
         <div class="bar__h">{{ title || route.meta.title || APP_TITLE }}</div>
         <div v-if="subtitle" class="bar__sub">{{ subtitle }}</div>
       </div>
+      <button
+        v-if="isDev" class="bar__env" :class="`bar__env--${mode}`"
+        :title="`Backend: ${backendLabel()} — click to change`"
+        @click="router.push(`${APP_BASE}/settings`)"
+      >{{ mode === 'live' ? 'LIVE' : 'LOCAL' }}</button>
       <slot name="actions" />
     </header>
   </div>
@@ -55,6 +60,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { APP_BASE, APP_TITLE } from '@/config/app'
 import { pages } from '@/config/pages'
+import { isDev, currentBackend, backendLabel } from '@/config/backend'
 
 defineProps({
   title: { type: String, default: '' },      // defaults to the page's title from config/pages.js
@@ -66,6 +72,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const drawerOpen = ref(false)
+const mode = currentBackend()
 
 // Group nav entries by section, keeping the order they appear in pages.js.
 const groups = computed(() => {
@@ -139,6 +146,12 @@ async function logout() {
 }
 .bar__btn:hover { background: rgba(255, 255, 255, 0.24); }
 .bar__title { flex: 1; min-width: 0; }
+.bar__env {
+  border: 1px solid rgba(255, 255, 255, 0.55); color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+  padding: 4px 9px; border-radius: 999px; flex-shrink: 0;
+}
+.bar__env--live { background: #b91c1c; }
+.bar__env--local { background: #047857; }
 .bar__h { font-size: 17px; font-weight: 650; }
 .bar__sub { font-size: 12px; opacity: 0.8; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

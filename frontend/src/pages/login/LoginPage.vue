@@ -29,6 +29,11 @@
           {{ loading ? 'Signing in…' : 'Sign in' }}
         </button>
       </form>
+
+      <div v-if="isDev" class="login-backend">
+        <div class="login-backend__label">Backend</div>
+        <BackendSwitch compact />
+      </div>
     </div>
   </div>
 </template>
@@ -38,6 +43,8 @@ import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { APP_BASE } from '@/config/app'
+import { isDev } from '@/config/backend'
+import BackendSwitch from '@/components/BackendSwitch.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -76,5 +83,7 @@ async function handleLogin() {
 .login-brand { text-align: center; margin-bottom: 24px; }
 .login-logo { width: 56px; height: 56px; display: block; margin: 0 auto 12px; }
 .login-brand h1 { font-size: 22px; font-weight: 700; }
+.login-backend { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--slate-100); }
+.login-backend__label { font-size: 12px; font-weight: 600; color: var(--slate-500); margin-bottom: 8px; }
 .login-brand p { font-size: 14px; color: var(--slate-500); margin-top: 4px; }
 </style>

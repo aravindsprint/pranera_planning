@@ -23,7 +23,14 @@ First time only: add the GitHub repo as an app on the site's bench group, deploy
 then install `pranera_planning` on erp.pranera.in. After that, every push is
 "deploy the bench" (which runs `bench migrate`, creating any new DocTypes).
 
-## 4. Verify
+## 4. Yarn Reservation needs the app deployed
+
+The page calls `pranera_planning.api.yarn_reservation.*` and the Stock Entry check lives in
+this app's hooks, so neither exists on erp.pranera.in until the app is installed there.
+Until then, test against your local bench (`VITE_PROXY_TARGET=http://127.0.0.1:8001`).
+Deploying runs `bench migrate`, which creates the Yarn Reservation DocType.
+
+## 5. Verify
 
 Open `https://erp.pranera.in/planning-app`, hard refresh (Cmd+Shift+R), and check
 that Home shows "Connected as <you>".

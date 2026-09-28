@@ -52,6 +52,37 @@ Ship them in this app (`pranera_planning/planning/doctype/<name>/`) so they are
 versioned in git and applied by `bench migrate` on deploy. Create them on the
 local bench with developer mode on, then commit the generated files.
 
+## Yarn reservation
+
+Page: `/planning-app/yarn-reservation`. Pick a purchase project, see each yarn batch bought
+under it, and reserve quantity for another project's production. A reservation is a
+`Yarn Reservation` document (one per batch per production project).
+
+The rule is enforced on Stock Entry `validate` (`reservation.py`) for Material Transfer for
+Manufacture, Manufacture and Send to Subcontractor: an issue of qty `q` to project `P` is
+refused unless `q <= free + still-reserved-for-P`. Batches with no active reservation are
+never touched, and a bug in the check fails open (logged) instead of blocking the floor.
+
+Definitions:
+- **In stores**: stock in warehouses other than `WIP*`, `SUB*`, `Direct Delivery*`
+  (`Batch.batch_qty` is not used because it also counts WIP).
+- **Remaining**: reserved qty minus what was issued to that project from that batch since the
+  reservation was created.
+- **Free**: in stores minus all remaining reservations.
+
+Site config (`site_config.json`), all optional:
+
+| key | default | effect |
+|---|---|---|
+| `yarn_reservation_enforcement` | `1` | `0` turns the Stock Entry check off, no redeploy |
+| `yarn_reservation_excluded_warehouse_prefixes` | `["WIP","SUB","Direct Delivery"]` | warehouses that do not count as issuable stock |
+
+Known limits: yarn returned from WIP to stores does not restore a reservation; plain
+Material Transfer / Material Issue are not checked; a Subcontracting Order whose items span
+several projects cannot be attributed to one project, so it is not checked.
+
+Tests: `python -m unittest pranera_planning.tests.test_reservation_math`
+
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md).

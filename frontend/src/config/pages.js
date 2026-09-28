@@ -21,6 +21,15 @@ export const pages = [
     component: () => import('@/pages/home/HomePage.vue'),
   },
 
+  {
+    path: 'project-stock-reservation',
+    title: 'Stock Reservation',
+    icon: 'pi pi-lock',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/project-stock-reservation/ProjectStockReservationPage.vue'),
+  },
+
   // ── Add pages below ────────────────────────────────────────────────────────
   // {
   //   path: 'production-plan',

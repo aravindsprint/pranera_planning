@@ -22,3 +22,14 @@ add_to_apps_screen = [
 website_route_rules = [
     {"from_route": "/planning-app/<path:app_path>", "to_route": "planning-app"},
 ]
+
+# Project stock reservation: stops stock reserved for one production project being
+# issued to another — covers yarn, fabric at any processing stage, chemicals, or
+# finished goods, whatever batch-tracked item it is.
+# Kill switch without a redeploy: set "project_stock_reservation_enforcement": 0 in
+# site_config.json.
+doc_events = {
+    "Stock Entry": {
+        "validate": "pranera_planning.reservation.validate_stock_entry",
+    },
+}

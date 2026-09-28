@@ -89,7 +89,7 @@ input, select, textarea { font-family: inherit; }
 .form-input::placeholder { color: var(--slate-400); }
 
 /* ── Feedback ────────────────────────────────────────────────────────────── */
-.alert { padding: 10px 14px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; margin-bottom: 12px; }
+.alert { white-space: pre-line; padding: 10px 14px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; margin-bottom: 12px; }
 .alert-error   { background: var(--red-100);   color: var(--red-600); }
 .alert-warning { background: var(--amber-100); color: var(--amber-600); }
 .alert-success { background: var(--green-100); color: var(--green-700); }

@@ -73,7 +73,7 @@ function extractServerError(data, fallback = 'Request failed') {
     const msgs = JSON.parse(data?._server_messages || '[]')
     if (msgs.length) {
       const last = JSON.parse(msgs[msgs.length - 1])
-      const text = String(last.message || last).replace(/<[^>]+>/g, '').trim()
+      const text = String(last.message || last).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim()
       if (text) return text
     }
   } catch { /* fall through */ }

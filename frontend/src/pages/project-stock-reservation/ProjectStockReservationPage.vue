@@ -89,7 +89,11 @@
               </tbody>
             </table>
           </div>
-          <p class="note">Remaining goes down as {{ data.project }}'s work orders issue the batch from that warehouse.</p>
+          <p class="note">
+            Remaining goes down as the batch is issued to {{ data.project }} from that warehouse — by its work orders
+            (Material Transfer for Manufacture, Manufacture) or its subcontracting orders (Send to Subcontractor against
+            a Subcontracting Order whose item, or the Purchase Order item behind it, is for {{ data.project }}).
+          </p>
         </section>
 
         <section v-if="data.rows.length" class="section">

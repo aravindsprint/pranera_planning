@@ -14,8 +14,10 @@ available   qty of a batch sitting in issuable warehouses, i.e. everything excep
             NOT used: it counts stock in every warehouse, including WIP.
 issue       a Stock Entry source line that takes a batch out of that pool:
             Material Transfer for Manufacture, Manufacture (straight from stores) and
-            Send to Subcontractor. Its project is the Work Order's project, or the
-            Subcontracting Order item's project. This covers Job Card-triggered
+            Send to Subcontractor. Its project is the Work Order's project; for Send to
+            Subcontractor, the project of the Subcontracting Order item the line supplies
+            material for, or else of the Purchase Order item behind it (see
+            PROJECT_EXPR). This covers Job Card-triggered
             transfers too — a Job Card doesn't move stock itself, it triggers a Stock
             Entry of one of these same types, which is what this hook actually sees.
 remaining   reserved_qty minus everything issued to that project from that batch, out of
@@ -54,15 +56,44 @@ DEFAULT_ROLL_ITEM_GROUPS = ("FABRIC", "COLLAR", "CUFF")
 DEFAULT_ROLL_FIELD = "custom_roll_no"
 
 # Which project does a Stock Entry line belong to?
-#  - Send to Subcontractor: the Subcontracting Order item's project, only if unambiguous
-#    (the order header project is blank on this site).
-#  - everything else: Work Order project, then the entry's own project.
-PROJECT_EXPR = """
+#
+# Send to Subcontractor (Purchase Order -> Subcontracting Order -> Stock Entry), first hit:
+#   1. the line's own order row: Stock Entry Detail.sco_rm_detail -> Subcontracting Order
+#      Supplied Item -> its Subcontracting Order Item's project, else that item's Purchase
+#      Order Item's project. Exact per line, so an order spanning projects is fine.
+#   2. the whole Subcontracting Order, if its items (SCO project, else PO item project)
+#      name exactly one project; then the SCO / Purchase Order header project.
+#   3. an old-style entry against a Purchase Order directly: its items' single project,
+#      else its header project.
+#   4. the entry's own project.
+# (On erp.pranera.in the header projects are blank and SCO item / PO item projects are
+# always filled and agree, so 1 decides practically every line.)
+#
+# Everything else: Work Order project, then the entry's own project.
+_SCO_ITEM_PROJECT = "COALESCE(NULLIF(soi.project, ''), NULLIF(poi.project, ''))"
+PROJECT_EXPR = f"""
 CASE
-  WHEN se.stock_entry_type = 'Send to Subcontractor' THEN (
-    SELECT NULLIF(MAX(soi.project), '') FROM `tabSubcontracting Order Item` soi
-    WHERE soi.parent = se.subcontracting_order
-    HAVING COUNT(DISTINCT soi.project) = 1)
+  WHEN se.stock_entry_type = 'Send to Subcontractor' THEN COALESCE(
+    (SELECT {_SCO_ITEM_PROJECT}
+       FROM `tabSubcontracting Order Supplied Item` sosi
+       JOIN `tabSubcontracting Order Item` soi ON soi.name = sosi.reference_name
+       LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
+      WHERE sosi.name = sed.sco_rm_detail LIMIT 1),
+    (SELECT MAX({_SCO_ITEM_PROJECT})
+       FROM `tabSubcontracting Order Item` soi
+       LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
+      WHERE soi.parent = se.subcontracting_order
+     HAVING COUNT(DISTINCT {_SCO_ITEM_PROJECT}) = 1),
+    (SELECT COALESCE(NULLIF(sco.project, ''), NULLIF(po.project, ''))
+       FROM `tabSubcontracting Order` sco
+       LEFT JOIN `tabPurchase Order` po ON po.name = sco.purchase_order
+      WHERE sco.name = se.subcontracting_order),
+    (SELECT MAX(NULLIF(poi.project, '')) FROM `tabPurchase Order Item` poi
+      WHERE poi.parent = se.purchase_order
+     HAVING COUNT(DISTINCT NULLIF(poi.project, '')) = 1),
+    (SELECT NULLIF(po.project, '') FROM `tabPurchase Order` po WHERE po.name = se.purchase_order),
+    NULLIF(se.project, '')
+  )
   ELSE COALESCE(NULLIF(wo.project, ''), NULLIF(se.project, ''))
 END
 """
@@ -281,18 +312,70 @@ def reservations_at(state, warehouse):
 
 # ── Stock Entry hook ─────────────────────────────────────────────────────────
 def resolve_project(doc):
+    """The entry-level project: Work Order's, or the entry's own. For Send to Subcontractor,
+    what applies to lines with no order row of their own — see line_projects()."""
     if doc.stock_entry_type == "Send to Subcontractor":
-        if not doc.get("subcontracting_order"):
-            return None
-        projects = frappe.db.sql_list(
-            """SELECT DISTINCT project FROM `tabSubcontracting Order Item`
-               WHERE parent = %s AND IFNULL(project, '') <> ''""",
-            doc.subcontracting_order,
-        )
-        return projects[0] if len(projects) == 1 else None
-
+        return _subcontract_order_project(doc)
     project = frappe.db.get_value("Work Order", doc.work_order, "project") if doc.get("work_order") else None
     return project or doc.get("project") or None
+
+
+def _subcontract_order_project(doc):
+    """Steps 2-4 of PROJECT_EXPR for one Stock Entry."""
+    if doc.get("subcontracting_order"):
+        projects = frappe.db.sql_list(
+            f"""SELECT DISTINCT {_SCO_ITEM_PROJECT} AS p
+                FROM `tabSubcontracting Order Item` soi
+                LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
+                WHERE soi.parent = %s AND {_SCO_ITEM_PROJECT} IS NOT NULL""",
+            doc.subcontracting_order,
+        )
+        if len(projects) == 1:
+            return projects[0]
+        sco_project, po = frappe.db.get_value("Subcontracting Order", doc.subcontracting_order, ["project", "purchase_order"]) or (None, None)
+        header = sco_project or (frappe.db.get_value("Purchase Order", po, "project") if po else None)
+        if header:
+            return header
+    if doc.get("purchase_order"):
+        projects = frappe.db.sql_list(
+            """SELECT DISTINCT project FROM `tabPurchase Order Item`
+               WHERE parent = %s AND IFNULL(project, '') <> ''""",
+            doc.purchase_order,
+        )
+        if len(projects) == 1:
+            return projects[0]
+        header = frappe.db.get_value("Purchase Order", doc.purchase_order, "project")
+        if header:
+            return header
+    return doc.get("project") or None
+
+
+def line_projects(doc):
+    """{row.name: project} for every item row of a Stock Entry.
+
+    Send to Subcontractor rows take the project of their own Subcontracting Order item
+    (or its Purchase Order item) via sco_rm_detail, falling back to the entry-level
+    project; every other type uses the entry-level project for all rows.
+    """
+    fallback = resolve_project(doc)
+    out = {row.name: fallback for row in doc.items}
+    if doc.stock_entry_type != "Send to Subcontractor":
+        return out
+    details = [row.get("sco_rm_detail") for row in doc.items if row.get("sco_rm_detail")]
+    if details:
+        per_detail = dict(frappe.db.sql(
+            f"""SELECT sosi.name, {_SCO_ITEM_PROJECT}
+                FROM `tabSubcontracting Order Supplied Item` sosi
+                JOIN `tabSubcontracting Order Item` soi ON soi.name = sosi.reference_name
+                LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
+                WHERE sosi.name IN %(names)s""",
+            {"names": tuple(set(details))},
+        ))
+        for row in doc.items:
+            p = per_detail.get(row.get("sco_rm_detail"))
+            if p:
+                out[row.name] = p
+    return out
 
 
 def validate_stock_entry(doc, method=None):
@@ -313,35 +396,42 @@ def validate_stock_entry(doc, method=None):
 
 def _check(doc):
     field = roll_field()
-    requested = defaultdict(float)          # (batch, warehouse) -> qty
-    requested_roll = defaultdict(float)     # (batch, warehouse, roll) -> qty
-    for row in doc.items:
-        if row.batch_no and row.s_warehouse and not row.is_finished_item and is_pool_warehouse(row.s_warehouse):
-            qty = flt(row.transfer_qty or row.qty)
-            requested[(row.batch_no, row.s_warehouse)] += qty
-            roll = clean_roll(row.get(field))
-            if roll:
-                requested_roll[(row.batch_no, row.s_warehouse, roll)] += qty
-    if not requested:
+    rows = [
+        row for row in doc.items
+        if row.batch_no and row.s_warehouse and not row.is_finished_item and is_pool_warehouse(row.s_warehouse)
+    ]
+    if not rows:
         return
 
     # Fast path: the vast majority of batches have no reservation, and cost one query.
     reserved_batches = frappe.get_all(
         "Project Stock Reservation",
-        filters={"status": "Active", "batch_no": ["in", list({b for b, _ in requested})]},
+        filters={"status": "Active", "batch_no": ["in", list({r.batch_no for r in rows})]},
         pluck="batch_no",
     )
     if not reserved_batches:
         return
+    reserved_batches = set(reserved_batches)
 
-    project = resolve_project(doc)
-    if not project:
+    projects = line_projects(doc)
+    requested = defaultdict(float)          # (batch, warehouse, project) -> qty
+    requested_roll = defaultdict(float)     # (batch, warehouse, roll, project) -> qty
+    for row in rows:
+        project = projects.get(row.name)
+        if row.batch_no not in reserved_batches or not project:
+            continue
+        qty = flt(row.transfer_qty or row.qty)
+        requested[(row.batch_no, row.s_warehouse, project)] += qty
+        roll = clean_roll(row.get(field))
+        if roll:
+            requested_roll[(row.batch_no, row.s_warehouse, roll, project)] += qty
+    if not requested:
         return
 
-    state = get_reservation_state(set(reserved_batches))
+    state = get_reservation_state(reserved_batches)
     problems = []
 
-    for (batch, wh), qty in requested.items():
+    for (batch, wh, project), qty in requested.items():
         st = state.get(batch)
         res = reservations_at(st, wh) if st else []
         if not res:
@@ -354,7 +444,7 @@ def _check(doc):
                 "(unreserved {5:g} + reserved for {3} {6:g}). Reserved for other projects: {7}."
             ).format(batch, wh, qty, project, allowed, free, own, _others(res, project)))
 
-    for (batch, wh, roll), qty in requested_roll.items():
+    for (batch, wh, roll, project), qty in requested_roll.items():
         st = state.get(batch)
         res = reservations_at(st, wh) if st else []
         on_roll = [r for r in res if r["roll_no"] == roll]

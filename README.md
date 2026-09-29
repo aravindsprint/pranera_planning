@@ -106,11 +106,17 @@ Site config (`site_config.json`), all optional:
 | `project_stock_reservation_roll_item_groups` | `["FABRIC","COLLAR","CUFF"]` | item group trees reserved by roll (missing groups ignored) |
 | `project_stock_reservation_roll_field` | `"custom_roll_no"` | Stock Entry Detail field holding the roll no. |
 
+Which project an issue belongs to: Material Transfer for Manufacture / Manufacture take the
+Work Order's project (else the entry's own). Send to Subcontractor takes, per line, the project of
+the Subcontracting Order item it supplies material for (`sco_rm_detail`), else of the Purchase Order
+item behind it; then the order's single item project, the SCO / Purchase Order header, an old-style
+entry's Purchase Order, and finally the entry's own project.
+
 Known limits: a reservation stays at its warehouse — moving the stock with a plain Material
 Transfer leaves the reservation behind (the new warehouse's stock is unreserved); an issue line
 with no roll no. counts against the warehouse, not against a roll reservation; stock returned from WIP to stores does not restore a reservation; plain
-Material Transfer / Material Issue are not checked; a Subcontracting Order whose items span
-several projects cannot be attributed to one project, so it is not checked.
+Material Transfer / Material Issue are not checked; a Send to Subcontractor line with no Subcontracting
+Order, Purchase Order or project anywhere cannot be attributed, so it is not checked.
 
 Tests (pure Python, no site needed): `python -m unittest pranera_planning.tests.test_reservation_math`,
 or on a bench with `allow_tests` enabled:

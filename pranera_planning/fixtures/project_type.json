@@ -1,10 +1,12 @@
 [
  {
   "doctype": "Project Type",
-  "name": "Purchase"
+  "name": "Purchase",
+  "project_type": "Purchase"
  },
  {
   "doctype": "Project Type",
-  "name": "Production"
+  "name": "Production",
+  "project_type": "Production"
  }
 ]

@@ -4,7 +4,7 @@ from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
 
 from pranera_planning.reservation import (
-    get_batch_purchase_project, get_reservation_state, is_pool_warehouse, is_roll_item,
+    batch_source_project, get_reservation_state, is_pool_warehouse, is_roll_item,
     reservations_at,
 )
 from pranera_planning.reservation_math import EPS, clean_roll, location_room, same_project
@@ -23,21 +23,19 @@ class ProjectStockReservation(Document):
         self.validate_unique_active()
         if self.status == "Active":
             self.validate_capacity()
-        if self.status == "Released":
-            self.released_on = self.released_on or now_datetime()
-        else:
-            self.released_on = None
+        self.released_on = (self.released_on or now_datetime()) if self.status == "Released" else None
+        self.fulfilled_on = (self.fulfilled_on or now_datetime()) if self.status == "Fulfilled" else None
 
     def validate_batch(self):
         batch_item = frappe.db.get_value("Batch", self.batch_no, "item")
         if batch_item != self.item_code:
             frappe.throw(_("Batch {0} belongs to item {1}, not {2}.").format(self.batch_no, batch_item, self.item_code))
 
-        project = get_batch_purchase_project(self.batch_no)
+        project = batch_source_project(self.batch_no)
         if not project:
-            frappe.throw(_("Batch {0} has no purchase project (no submitted Purchase Receipt with a project).").format(self.batch_no))
+            frappe.throw(_("Batch {0} belongs to no project: it wasn't purchased under one (Purchase Receipt) or produced for exactly one (Work Order / Subcontracting Receipt).").format(self.batch_no))
         if not same_project(project, self.purchase_project):
-            frappe.throw(_("Batch {0} was purchased under project {1}, not {2}.").format(self.batch_no, project, self.purchase_project))
+            frappe.throw(_("Batch {0} belongs to project {1}, not {2}.").format(self.batch_no, project, self.purchase_project))
 
     def validate_location(self):
         """Yarn and other batch items are reserved at warehouse + batch; roll items (fabric,

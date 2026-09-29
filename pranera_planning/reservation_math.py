@@ -78,7 +78,7 @@ def location_room(available, roll_balances, reservations, roll_no=None):
     return s["unnumbered"]["free"]
 
 
-def allowed_issue_qty(available, reservations, project, roll_balances=None, roll_no=None):
+def allowed_issue_qty(available, reservations, project, roll_balances=None, roll_no=None, owner=None):
     """How much of a batch may be issued to `project` from one warehouse right now.
 
     available     qty of the batch in that warehouse
@@ -87,11 +87,15 @@ def allowed_issue_qty(available, reservations, project, roll_balances=None, roll
     project       the production project that wants to issue
     roll_no       the roll being issued, if the line names one. A roll reserved for another
                   project can't be issued to this one beyond what's left on it unreserved.
+    owner         the project the batch was produced for, if any. Unreserved stock of an
+                  owned batch is the owner's: any other project may take only what is
+                  reserved for it.
 
     Returns (allowed, free, own_remaining, total_remaining):
       free       unreserved stock in the warehouse, usable by any project
       own        what is still reserved for `project` itself in the warehouse
-      allowed    free + own, further capped for a roll reserved to someone else
+      allowed    free + own (own only, for a batch owned by another project), further
+                 capped for a roll reserved to someone else
     """
     total = own = 0.0
     for r in reservations:
@@ -100,7 +104,8 @@ def allowed_issue_qty(available, reservations, project, roll_balances=None, roll
         if same_project(r["production_project"], project):
             own += rem
     free = max(0.0, float(available or 0) - total)
-    allowed = free + own
+    foreign = bool(owner) and not same_project(owner, project)
+    allowed = (0.0 if foreign else free) + own
 
     if roll_no:
         on_roll = [r for r in reservations if r.get("roll_no") == roll_no]
@@ -108,6 +113,7 @@ def allowed_issue_qty(available, reservations, project, roll_balances=None, roll
         if others > EPS:
             mine = sum(_rem(r) for r in on_roll if same_project(r["production_project"], project))
             balance = max(0.0, float((roll_balances or {}).get(roll_no) or 0))
-            allowed = min(allowed, max(0.0, balance - others - mine) + mine)
+            spare = 0.0 if foreign else max(0.0, balance - others - mine)
+            allowed = min(allowed, spare + mine)
 
     return allowed, free, own, total

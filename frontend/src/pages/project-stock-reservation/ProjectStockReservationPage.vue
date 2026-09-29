@@ -9,7 +9,7 @@
           <div class="picker__row">
             <LinkField
               id="pp" v-model="project" doctype="Project" placeholder="e.g. 26PTIN1710"
-              :search-fn="searchProjects" empty-label="No project with received or reserved stock found"
+              :search-fn="searchProjects" empty-label="No project with received, produced or reserved stock found"
               @change="load"
             />
             <button class="btn btn-primary" :disabled="!project || loading" @click="load">Show stock</button>
@@ -33,10 +33,10 @@
         </div>
       </div>
 
-      <div v-else-if="!data.rows.length && !data.reserved_for.length" class="card">
+      <div v-else-if="!data.rows.length && !data.reserved_for.length && !data.produced_rows.length" class="card">
         <div class="empty-state">
-          <div class="empty-state__title">Nothing received under or reserved for {{ data.project }}</div>
-          <div class="empty-state__sub">Stock shows here once it is received through a submitted Purchase Receipt with this project, or reserved for it from another project.</div>
+          <div class="empty-state__title">Nothing received, produced or reserved for {{ data.project }}</div>
+          <div class="empty-state__sub">Stock shows here once it is received through a submitted Purchase Receipt with this project, produced by its work orders or subcontracting receipts, or reserved for it from another project.</div>
         </div>
       </div>
 
@@ -64,10 +64,13 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="x in data.reserved_for" :key="x.name">
+                <tr v-for="x in data.reserved_for" :key="x.name" :class="{ done: x.status === 'Fulfilled' }">
                   <td>
                     <button class="link-btn primary" :title="`Show ${x.purchase_project}'s stock`" @click="openProject(x.purchase_project)">{{ x.purchase_project }}</button>
-                    <div class="sub">{{ x.name }}<template v-if="x.sales_order"> · {{ x.sales_order }}</template></div>
+                    <div class="sub">
+                      {{ x.name }}<template v-if="x.sales_order"> · {{ x.sales_order }}</template>
+                      <span v-if="x.status === 'Fulfilled'" class="level ok">Fulfilled</span>
+                    </div>
                   </td>
                   <td>
                     <div class="item">{{ x.item_name || x.item_code }}</div>
@@ -84,7 +87,7 @@
                     <span v-if="x.in_stores_qty + 1e-6 < x.remaining_qty" class="badge badge-warning" title="Less is in stores at this location than is still reserved">{{ fmt(x.in_stores_qty) }}</span>
                     <span v-else>{{ fmt(x.in_stores_qty) }}</span>
                   </td>
-                  <td class="act"><button class="link-btn" @click="release(x)">Release</button></td>
+                  <td class="act"><button v-if="x.status === 'Active'" class="link-btn" @click="release(x)">Release</button></td>
                 </tr>
               </tbody>
             </table>
@@ -93,13 +96,55 @@
             Remaining goes down as the batch is issued to {{ data.project }} from that warehouse — by its work orders
             (Material Transfer for Manufacture, Manufacture) or its subcontracting orders (Send to Subcontractor against
             a Subcontracting Order whose item, or the Purchase Order item behind it, is for {{ data.project }}).
+            A reservation is marked Fulfilled once everything reserved has been issued.
           </p>
         </section>
 
-        <section v-if="data.rows.length" class="section">
-        <h2 v-if="data.reserved_for.length" class="section__h">Received under {{ data.project }}</h2>
+        <section v-for="sec in batchSections" :key="sec.key" class="section">
+        <h2 v-if="sectionCount > 1" class="section__h">{{ sec.title }}</h2>
+
+        <div v-if="sec.key === 'produced' && data.stages.length" class="table-wrap flow">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th class="num" title="What the previous stage issued to this project">Input</th>
+                <th class="num">Produced</th>
+                <th class="num" title="Input minus produced: still being processed, or process loss">Difference</th>
+                <th class="num">In stores</th>
+                <th class="num">In WIP</th>
+                <th class="num">At subcontractor</th>
+                <th class="num">Moved on</th>
+                <th class="num">To other projects</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="g in data.stages" :key="g.stage">
+                <td><div class="item">{{ g.stage }}</div><div class="sub">{{ g.batches }} batch{{ g.batches === 1 ? '' : 'es' }}</div></td>
+                <td class="num">{{ g.input_qty ? fmt(g.input_qty) : '—' }}</td>
+                <td class="num"><strong>{{ fmt(g.produced_qty) }}</strong> <span class="uom">{{ g.uom }}</span></td>
+                <td class="num">
+                  <template v-if="g.difference_qty !== null">
+                    {{ fmt(g.difference_qty) }}
+                    <span v-if="g.input_qty" class="sub">({{ pct(g.difference_qty, g.input_qty) }})</span>
+                  </template>
+                  <template v-else>—</template>
+                </td>
+                <td class="num">{{ fmt(g.in_stores_qty) }}</td>
+                <td class="num">{{ fmt(g.in_wip_qty) }}</td>
+                <td class="num">{{ fmt(g.at_subcontractor_qty) }}</td>
+                <td class="num">{{ fmt(g.used_own_qty) }}</td>
+                <td class="num">
+                  <span v-if="g.used_other_qty > 0" class="badge badge-warning">{{ fmt(g.used_other_qty) }}</span>
+                  <span v-else>0</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         <div class="stats">
-          <div v-for="s in stats" :key="s.label" class="stat">
+          <div v-for="s in sectionStats(sec)" :key="s.label" class="stat">
             <div class="stat__v">{{ fmt(s.value) }}</div>
             <div class="stat__l">{{ s.label }}</div>
           </div>
@@ -111,7 +156,7 @@
               <tr>
                 <th></th>
                 <th>Item / batch</th>
-                <th class="num">Received</th>
+                <th class="num">{{ sec.qtyLabel }}</th>
                 <th class="num">Used by {{ data.project }}</th>
                 <th class="num">Used by other projects</th>
                 <th class="num">In stores</th>
@@ -121,7 +166,7 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="r in data.rows" :key="r.batch_no">
+              <template v-for="r in sec.rows" :key="r.batch_no">
                 <tr>
                   <td class="tog">
                     <button class="icon" :aria-label="open[r.batch_no] ? 'Hide details' : 'Show details'" @click="open[r.batch_no] = !open[r.batch_no]">
@@ -135,12 +180,17 @@
                       <span class="level" :title="r.roll_tracked ? 'Reserved by warehouse, batch and roll' : 'Reserved by warehouse and batch'">
                         {{ r.roll_tracked ? 'By roll' : 'By batch' }}
                       </span>
+                      <span v-if="r.stage" class="level">{{ r.stage }}</span>
+                      <span v-if="r.made_by" class="level">{{ r.made_by }}</span>
                     </div>
                   </td>
                   <td class="num">{{ fmt(r.received_qty) }} <span class="uom">{{ r.uom }}</span></td>
                   <td class="num">{{ fmt(r.used_own_qty) }}</td>
                   <td class="num">{{ fmt(sum(r.used_other)) }}</td>
-                  <td class="num">{{ fmt(r.available_qty) }}</td>
+                  <td class="num">
+                    {{ fmt(r.available_qty) }}
+                    <div v-for="(q, place) in r.elsewhere" :key="place" class="sub">{{ place }} {{ fmt(q) }}</div>
+                  </td>
                   <td class="num"><span v-if="r.reserved_remaining > 0" class="badge badge-warning">{{ fmt(r.reserved_remaining) }}</span><span v-else>0</span></td>
                   <td class="num"><strong>{{ fmt(r.free_qty) }}</strong></td>
                   <td class="act"><button class="btn btn-outline sm" :disabled="r.free_qty <= 0" @click="openDialog(r)">Reserve</button></td>
@@ -231,6 +281,9 @@
         <p class="note">
           "In stores" is stock in issuable warehouses; stock already in WIP or at a subcontractor is counted as used.
           Reserved stock cannot be issued to any other project.
+          <template v-if="sec.key === 'produced'">
+            Produced stock belongs to {{ data.project }}: another project can take it only once it is reserved for that project here.
+          </template>
         </p>
         </section>
       </template>
@@ -313,8 +366,8 @@ const selectedTypes = computed(() => PROJECT_TYPES.filter((t) => types[t]))
 // Both ticked, or neither, means no type filter (unclassified projects included).
 const typeHint = computed(() => {
   const t = selectedTypes.value
-  if (t.length === 1) return `Projects with received stock, typed ${t[0]}.`
-  return 'Projects with received stock, any type — including ones not yet classified.'
+  if (t.length === 1) return `Projects with received, produced or reserved stock, typed ${t[0]}.`
+  return 'Projects with received, produced or reserved stock, any type — including ones not yet classified.'
 })
 
 async function searchProjects(txt) {
@@ -340,17 +393,31 @@ const dlg = reactive({
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })
 const sum = (list) => list.reduce((a, x) => a + x.qty, 0)
 
-const stats = computed(() => {
-  const t = data.value?.totals
-  return t ? [
-    { label: 'Received', value: t.received_qty },
+const pct = (part, whole) => `${((100 * part) / whole).toFixed(1)}%`
+
+// Batches produced for the project (its work orders / subcontracting receipts), then batches
+// received under it (purchase receipts). Same table for both.
+const batchSections = computed(() => {
+  const d = data.value
+  if (!d) return []
+  return [
+    { key: 'produced', title: `Produced for ${d.project}`, qtyLabel: 'Produced', rows: d.produced_rows, totals: d.produced_totals },
+    { key: 'received', title: `Received under ${d.project}`, qtyLabel: 'Received', rows: d.rows, totals: d.totals },
+  ].filter((sec) => sec.rows.length)
+})
+const sectionCount = computed(() => batchSections.value.length + (data.value?.reserved_for.length ? 1 : 0))
+
+function sectionStats(sec) {
+  const t = sec.totals
+  return [
+    { label: sec.qtyLabel, value: t.received_qty },
     { label: 'Used by this project', value: t.used_own_qty },
     { label: 'Used by other projects', value: t.used_other_qty },
     { label: 'In stores', value: t.available_qty },
     { label: 'Reserved', value: t.reserved_remaining },
     { label: 'Free to reserve', value: t.free_qty },
-  ] : []
-})
+  ]
+}
 
 const reservedStats = computed(() => {
   const t = data.value?.reserved_totals
@@ -504,6 +571,9 @@ onMounted(() => {
 .sm { padding: 5px 12px; font-size: 13px; }
 .muted { color: var(--slate-500); font-size: 13px; }
 .section + .section { margin-top: 32px; }
+.flow { margin-bottom: 16px; }
+.level.ok { background: #dcfce7; color: #166534; }
+tr.done td { color: var(--slate-500); }
 .section__h { font-size: 16px; font-weight: 650; margin-bottom: 12px; }
 .note { margin-top: 12px; font-size: 13px; color: var(--slate-500); max-width: 80ch; }
 

@@ -31,6 +31,8 @@ website_route_rules = [
 doc_events = {
     "Stock Entry": {
         "validate": "pranera_planning.reservation.validate_stock_entry",
+        "on_submit": "pranera_planning.reservation.update_fulfilment",
+        "on_cancel": "pranera_planning.reservation.update_fulfilment",
     },
 }
 

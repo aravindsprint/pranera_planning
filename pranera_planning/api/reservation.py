@@ -5,7 +5,8 @@ import frappe
 from frappe.utils import flt
 
 from pranera_planning.reservation import (
-    get_issue_lines, get_reservation_state, reservations_at, roll_tracked_items,
+    get_elsewhere_qty, get_issue_lines, get_produced_batches, get_reservation_state,
+    reservations_at, roll_tracked_items, stage_of, stages,
 )
 from pranera_planning.reservation_math import EPS, location_summary, same_project
 
@@ -16,7 +17,8 @@ PROJECT_TYPES = ("Purchase", "Production")
 def search_purchase_projects(txt="", project_types=None):
     """Projects the page has something to show for — for its "Project" picker: ones that
     have received batch-tracked stock (a submitted Purchase Receipt line with a batch under
-    the project), or that hold an active reservation of someone else's stock. A plain
+    the project), hold a reservation of someone else's stock, or have produced something
+    on a Work Order. A plain
     Project search would offer every project, most of which land on the empty state.
 
     Matches on the project ID or its project_name.
@@ -50,7 +52,11 @@ def search_purchase_projects(txt="", project_types=None):
                )
                OR EXISTS (
                  SELECT 1 FROM `tabProject Stock Reservation` psr
-                 WHERE psr.production_project = p.name AND psr.status = 'Active'
+                 WHERE psr.production_project = p.name AND psr.status IN ('Active', 'Fulfilled')
+               )
+               OR EXISTS (
+                 SELECT 1 FROM `tabWork Order` wo
+                 WHERE wo.project = p.name AND wo.docstatus = 1 AND wo.produced_qty > 0
                )
              )
            ORDER BY p.modified DESC
@@ -73,8 +79,12 @@ def get_purchase_project_stock(project, item_group=None):
     `roll_tracked`), each location lists its numbered rolls and an "unnumbered" remainder,
     since rolls are reserved individually.
 
-    `reserved_for` lists the active reservations *held by* `project` on other projects'
-    stock — what a Production project sees — with `reserved_totals`.
+    `reserved_for` lists the Active and Fulfilled reservations *held by* `project` on other
+    projects' stock — what a Production project sees — with `reserved_totals`.
+
+    `produced_rows` are batches produced for `project` (its Work Orders / Subcontracting
+    Receipts), in the same row shape plus `stage`, `made_by` and `elsewhere` (qty in WIP /
+    at the subcontractor); `stages` summarises them per stage, in process order.
 
     `item_group` is optional and restricts the result to that Item Group's tree (e.g.
     "YARN", "FABRIC") — pass nothing to see every batch-tracked item bought under the
@@ -104,19 +114,41 @@ def get_purchase_project_stock(project, item_group=None):
             ORDER BY pri.item_code, pri.batch_no""",
         params, as_dict=True,
     )
-    batch_nos = [b.batch_no for b in batches]
     reserved_for = _reserved_for(project)
-    out = {
+    produced = [b for b in get_produced_batches(project) if _in_group(b, item_group)]
+    for b in batches:
+        b.made_by = None
+    rows = _batch_rows(project, batches, "received_qty")
+    produced_rows = _batch_rows(project, produced, "produced_qty")
+    return {
         "project": project,
         "reserved_for": reserved_for,
         "reserved_totals": _reserved_totals(reserved_for),
+        "rows": rows,
+        "totals": _totals(rows),
+        "produced_rows": produced_rows,
+        "produced_totals": _totals(produced_rows),
+        "stages": _stages(produced_rows, reserved_for, rows, project),
     }
-    if not batch_nos:
-        return {**out, "rows": [], "totals": _totals([])}
 
+
+def _in_group(b, item_group):
+    if not item_group or not b.item_group:
+        return not item_group
+    root = frappe.db.get_value("Item Group", item_group, ["lft", "rgt"], as_dict=True)
+    grp = frappe.db.get_value("Item Group", b.item_group, ["lft", "rgt"], as_dict=True)
+    return bool(root and grp and grp.lft >= root.lft and grp.rgt <= root.rgt)
+
+
+def _batch_rows(project, batches, qty_field):
+    """One page row per batch — shared by received (Purchase Receipt) and produced batches."""
+    batch_nos = [b.batch_no for b in batches]
+    if not batch_nos:
+        return []
     lines = get_issue_lines(batch_nos)
     state = get_reservation_state(batch_nos, issue_lines=lines)
     roll_items = roll_tracked_items([b.item_code for b in batches])
+    elsewhere = get_elsewhere_qty(batch_nos) if qty_field == "produced_qty" else {}
 
     issued_by = defaultdict(lambda: defaultdict(float))     # batch -> project -> qty
     for l in lines:
@@ -134,7 +166,10 @@ def get_purchase_project_stock(project, item_group=None):
             "item_name": b.item_name,
             "uom": b.stock_uom,
             "batch_no": b.batch_no,
-            "received_qty": flt(b.received_qty),
+            "received_qty": flt(b.get(qty_field)),
+            "made_by": b.get("made_by"),
+            "stage": stage_of(b.item_code, b.get("item_group")) if qty_field == "produced_qty" else None,
+            "elsewhere": elsewhere.get(b.batch_no, {}),
             "available_qty": st["available"],
             "used_own_qty": used_own,
             "used_other": sorted(
@@ -147,22 +182,63 @@ def get_purchase_project_stock(project, item_group=None):
             "locations": locations,
             "reservations": st["reservations"],
         })
-    return {**out, "rows": rows, "totals": _totals(rows)}
+    return rows
+
+
+def _stages(produced_rows, reserved_for, received_rows, project):
+    """Per stage, in the configured order (Greige -> Dyed -> Finished, then anything else):
+    what went in, what came out, and where the output is now.
+
+    input      what the previous stage's batches issued to this project (for the first
+               stage: yarn issued to it — its reservations plus its own purchases)
+    produced   output batches made for this project
+    difference input - produced: still being processed, or lost (process loss)
+    """
+    order = [label for _, label in stages()]
+    by_stage = defaultdict(list)
+    for r in produced_rows:
+        by_stage[r["stage"]].append(r)
+    labels = [l for l in order if l in by_stage] + sorted(l for l in by_stage if l not in order)
+
+    first_input = sum(x["issued_qty"] for x in reserved_for) + sum(r["used_own_qty"] for r in received_rows)
+    out, prev_out = [], first_input
+    for label in labels:
+        rs = by_stage[label]
+        produced = sum(r["received_qty"] for r in rs)
+        wip = sum(r["elsewhere"].get("In WIP", 0) for r in rs)
+        sub = sum(r["elsewhere"].get("At subcontractor", 0) for r in rs)
+        used_own = sum(r["used_own_qty"] for r in rs)
+        used_other = sum(x["qty"] for r in rs for x in r["used_other"])
+        out.append({
+            "stage": label,
+            "batches": len(rs),
+            "uom": rs[0]["uom"],
+            "input_qty": round(prev_out, 3),
+            "produced_qty": round(produced, 3),
+            "difference_qty": round(prev_out - produced, 3) if prev_out else None,
+            "in_stores_qty": round(sum(r["available_qty"] for r in rs), 3),
+            "in_wip_qty": round(wip, 3),
+            "at_subcontractor_qty": round(sub, 3),
+            "used_own_qty": round(used_own, 3),
+            "used_other_qty": round(used_other, 3),
+        })
+        prev_out = used_own
+    return out
 
 
 def _reserved_for(project):
-    """Active reservations held by `project`, one row each, with how much is still in stores
-    at the reserved location to back what remains."""
+    """Active and Fulfilled reservations held by `project`, one row each, with how much is
+    still in stores at the reserved location to back what remains."""
     res = frappe.get_all(
         "Project Stock Reservation",
-        filters={"status": "Active", "production_project": project},
-        fields=["name", "purchase_project", "item_code", "item_name", "stock_uom", "batch_no",
+        filters={"status": ["in", ["Active", "Fulfilled"]], "production_project": project},
+        fields=["name", "status", "purchase_project", "item_code", "item_name", "stock_uom", "batch_no",
                 "warehouse", "roll_no", "sales_order", "creation"],
         order_by="creation desc",
     )
     if not res:
         return []
-    state = get_reservation_state([r.batch_no for r in res])
+    state = get_reservation_state([r.batch_no for r in res], statuses=("Active", "Fulfilled"))
     out = []
     for r in res:
         st = state.get(r.batch_no) or {"locations": {}, "reservations": []}
@@ -175,6 +251,7 @@ def _reserved_for(project):
             on_hand = max(0.0, loc["rolls"][live["roll_no"]])
         out.append({
             "name": r.name,
+            "status": r.status,
             "purchase_project": r.purchase_project,
             "item_code": r.item_code,
             "item_name": r.item_name,
@@ -185,10 +262,11 @@ def _reserved_for(project):
             "sales_order": r.sales_order,
             "production_project": project,
             "reserved_qty": live["reserved_qty"],
-            "issued_qty": round(live["issued_qty"], 3),
+            "issued_qty": round(min(live["issued_qty"], live["reserved_qty"]), 3),
             "remaining_qty": round(live["remaining_qty"], 3),
             "in_stores_qty": round(min(live["remaining_qty"], max(0.0, on_hand)), 3),
         })
+    out.sort(key=lambda x: x["status"] != "Active")
     return out
 
 

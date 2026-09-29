@@ -25,14 +25,29 @@ remaining   reserved_qty minus everything issued to that project from that batch
             was created.
 free        per warehouse: available there minus remaining over its active reservations.
 
+owner       a batch *produced* for a project — finished item of a Manufacture Stock Entry
+            (Work Order's project, else the entry's), or received on a Subcontracting
+            Receipt (its item's project, else the Subcontracting Order / Purchase Order
+            item's) — belongs to that project. Purchased batches have no owner: they are
+            shared until reserved. A batch produced for several projects has no owner.
+
 An issue of qty q from warehouse W to project P is allowed when
-q <= free at W + remaining reserved for P at W; and a roll reserved for another project
-cannot be issued to P at all (beyond any unreserved balance left on that roll).
-Batches with no active reservation are never touched by this module.
+q <= free at W + remaining reserved for P at W — where "free" counts only if P owns the
+batch or nobody does; and a roll reserved for another project cannot be issued to P at
+all (beyond any unreserved balance left on that roll). Batches with no active reservation
+and no owner are never touched by this module.
+
+A reservation is Fulfilled automatically once everything reserved has been issued (on
+Stock Entry submit), and goes back to Active if cancelling that entry reopens it.
 
 Site config (all optional)
 --------------------------
 project_stock_reservation_enforcement                  0 switches enforcement off (default 1)
+project_stock_reservation_protect_produced             0 lets produced batches go to any project
+                                                       without a reservation (default 1)
+project_stock_reservation_stages                       [[item code prefix, stage], ...] for the
+                                                       page's produced section, default
+                                                       [["GKF","Greige"],["DKF","Dyed"],["SKF","Finished"]]
 project_stock_reservation_excluded_warehouse_prefixes  list, default ["WIP", "SUB", "Direct Delivery"]
 project_stock_reservation_roll_item_groups             list, default ["FABRIC", "COLLAR", "CUFF"]
                                                        (item group trees reserved by roll; missing
@@ -54,6 +69,7 @@ ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", 
 DEFAULT_EXCLUDED_PREFIXES = ("WIP", "SUB", "Direct Delivery")
 DEFAULT_ROLL_ITEM_GROUPS = ("FABRIC", "COLLAR", "CUFF")
 DEFAULT_ROLL_FIELD = "custom_roll_no"
+DEFAULT_STAGES = (("GKF", "Greige"), ("DKF", "Dyed"), ("SKF", "Finished"))
 
 # Which project does a Stock Entry line belong to?
 #
@@ -106,6 +122,21 @@ def is_enabled():
 
 def excluded_prefixes():
     return tuple(frappe.conf.get("project_stock_reservation_excluded_warehouse_prefixes") or DEFAULT_EXCLUDED_PREFIXES)
+
+
+def protect_produced():
+    return bool(int(frappe.conf.get("project_stock_reservation_protect_produced", 1)))
+
+
+def stages():
+    return [tuple(x) for x in (frappe.conf.get("project_stock_reservation_stages") or DEFAULT_STAGES)]
+
+
+def stage_of(item_code, item_group=None):
+    for prefix, label in stages():
+        if (item_code or "").upper().startswith(prefix.upper()):
+            return label
+    return item_group or "Other"
 
 
 def roll_item_groups():
@@ -166,6 +197,174 @@ def get_batch_purchase_project(batch_no):
            WHERE pri.batch_no = %s AND IFNULL(pri.project, '') <> ''""",
         batch_no,
     )[0][0]
+
+
+# Project a produced batch-entry belongs to. Needs aliases se, sed, wo (Stock Entry side) and
+# scri, scr, soi, poi (Subcontracting Receipt side), all LEFT JOINed on the bundle's voucher.
+_PRODUCED_JOINS = """
+    LEFT JOIN `tabStock Entry` se ON sbb.voucher_type = 'Stock Entry' AND se.name = sbb.voucher_no
+    LEFT JOIN `tabStock Entry Detail` sed ON sbb.voucher_type = 'Stock Entry' AND sed.name = sbb.voucher_detail_no
+    LEFT JOIN `tabWork Order` wo ON wo.name = se.work_order
+    LEFT JOIN `tabSubcontracting Receipt Item` scri
+      ON sbb.voucher_type = 'Subcontracting Receipt' AND scri.name = sbb.voucher_detail_no
+    LEFT JOIN `tabSubcontracting Receipt` scr ON scr.name = scri.parent
+    LEFT JOIN `tabSubcontracting Order Item` soi ON soi.name = scri.subcontracting_order_item
+    LEFT JOIN `tabPurchase Order Item` poi
+      ON poi.name = COALESCE(NULLIF(scri.purchase_order_item, ''), soi.purchase_order_item)
+"""
+_PRODUCED_WHERE = """
+    sbe.qty > 0 AND sbb.docstatus = 1 AND sbb.is_cancelled = 0 AND (
+      (sbb.voucher_type = 'Stock Entry' AND se.docstatus = 1 AND se.purpose = 'Manufacture'
+        AND sed.is_finished_item = 1)
+      OR (sbb.voucher_type = 'Subcontracting Receipt' AND scr.docstatus = 1)
+    )
+"""
+_PRODUCED_PROJECT = """
+    CASE WHEN sbb.voucher_type = 'Stock Entry'
+      THEN COALESCE(NULLIF(wo.project, ''), NULLIF(se.project, ''))
+      ELSE COALESCE(NULLIF(scri.project, ''), NULLIF(soi.project, ''), NULLIF(poi.project, ''), NULLIF(scr.project, ''))
+    END
+"""
+
+
+def get_produced_owners(batch_nos):
+    """{batch: project} for batches produced for exactly one project (see "owner")."""
+    batch_nos = list({b for b in batch_nos if b})
+    if not batch_nos:
+        return {}
+    rows = frappe.db.sql(
+        f"""SELECT sbe.batch_no, {_PRODUCED_PROJECT} AS project
+            FROM `tabSerial and Batch Entry` sbe
+            JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
+            {_PRODUCED_JOINS}
+            WHERE sbe.batch_no IN %(batches)s AND {_PRODUCED_WHERE}""",
+        {"batches": tuple(batch_nos)}, as_dict=True,
+    )
+    seen = defaultdict(set)
+    for r in rows:
+        seen[r.batch_no].add(r.project or "")
+    return {b: next(iter(ps)) for b, ps in seen.items() if len(ps) == 1 and next(iter(ps))}
+
+
+def get_produced_batches(project):
+    """Batches produced for `project`: [{item_code, item_name, item_group, stock_uom, batch_no,
+    produced_qty, made_by}]. Made by its Work Orders (Manufacture) or its Subcontracting
+    Receipts (via the receipt item's project, else its Subcontracting Order / Purchase Order
+    item's)."""
+    # Look the vouchers up first with simple indexed queries: an OR of the two routes in one
+    # query stops MariaDB using any index (2.8 s vs ~0.2 s on erp.pranera.in).
+    wos = frappe.db.sql_list("SELECT name FROM `tabWork Order` WHERE project = %s AND docstatus = 1", project)
+    entries = set(frappe.db.sql_list(
+        """SELECT name FROM `tabStock Entry` WHERE docstatus = 1 AND purpose = 'Manufacture'
+           AND project = %s AND IFNULL(work_order, '') = ''""", project,
+    ))
+    if wos:
+        entries |= set(frappe.db.sql_list(
+            """SELECT name FROM `tabStock Entry` WHERE docstatus = 1 AND purpose = 'Manufacture'
+               AND work_order IN %(wos)s""", {"wos": tuple(wos)},
+        ))
+    sco_items = frappe.db.sql_list(
+        """SELECT soi.name FROM `tabSubcontracting Order Item` soi
+           LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
+           WHERE soi.project = %(p)s OR poi.project = %(p)s""",
+        {"p": project},
+    )
+    receipt_items = set(frappe.db.sql_list(
+        "SELECT name FROM `tabSubcontracting Receipt Item` WHERE project = %s", project,
+    ))
+    if sco_items:
+        receipt_items |= set(frappe.db.sql_list(
+            "SELECT name FROM `tabSubcontracting Receipt Item` WHERE subcontracting_order_item IN %(i)s",
+            {"i": tuple(sco_items)},
+        ))
+
+    rows = []
+    if entries:
+        rows += frappe.db.sql(
+            """SELECT sed.item_code, SUM(sbe.qty) AS qty, sbe.batch_no, 'Work Order' AS made_by
+               FROM `tabStock Entry Detail` sed
+               JOIN `tabSerial and Batch Bundle` sbb
+                 ON sbb.voucher_type = 'Stock Entry' AND sbb.voucher_no = sed.parent AND sbb.voucher_detail_no = sed.name
+                AND sbb.docstatus = 1 AND sbb.is_cancelled = 0
+               JOIN `tabSerial and Batch Entry` sbe ON sbe.parent = sbb.name AND sbe.qty > 0
+               WHERE sed.parent IN %(entries)s AND sed.is_finished_item = 1
+               GROUP BY sed.item_code, sbe.batch_no""",
+            {"entries": tuple(entries)}, as_dict=True,
+        )
+    if receipt_items:
+        rows += frappe.db.sql(
+            """SELECT scri.item_code, SUM(sbe.qty) AS qty, sbe.batch_no, 'Subcontracting' AS made_by
+               FROM `tabSubcontracting Receipt Item` scri
+               JOIN `tabSubcontracting Receipt` scr ON scr.name = scri.parent AND scr.docstatus = 1
+               JOIN `tabSerial and Batch Bundle` sbb
+                 ON sbb.voucher_type = 'Subcontracting Receipt' AND sbb.voucher_no = scr.name AND sbb.voucher_detail_no = scri.name
+                AND sbb.docstatus = 1 AND sbb.is_cancelled = 0
+               JOIN `tabSerial and Batch Entry` sbe ON sbe.parent = sbb.name AND sbe.qty > 0
+               WHERE scri.name IN %(items)s
+               GROUP BY scri.item_code, sbe.batch_no""",
+            {"items": tuple(receipt_items)}, as_dict=True,
+        )
+    if not rows:
+        return []
+
+    items = {
+        i.name: i for i in frappe.get_all(
+            "Item", filters={"name": ["in", list({r.item_code for r in rows})]},
+            fields=["name", "item_name", "item_group", "stock_uom"],
+        )
+    }
+    merged = {}
+    for r in rows:
+        key = (r.item_code, r.batch_no)
+        m = merged.setdefault(key, frappe._dict(
+            item_code=r.item_code, batch_no=r.batch_no, produced_qty=0.0, made_by=set(),
+            item_name=items.get(r.item_code, {}).get("item_name"),
+            item_group=items.get(r.item_code, {}).get("item_group"),
+            stock_uom=items.get(r.item_code, {}).get("stock_uom"),
+        ))
+        m.produced_qty += flt(r.qty)
+        m.made_by.add(r.made_by)
+    out = []
+    for m in merged.values():
+        m.made_by = " + ".join(sorted(m.made_by))
+        m.produced_qty = round(m.produced_qty, 3)
+        out.append(m)
+    return sorted(out, key=lambda m: (m.item_code, m.batch_no))
+
+
+def batch_source_project(batch_no):
+    """Whose stock a batch is, for reserving it: the project it was purchased under, else
+    the one it was produced for."""
+    return get_batch_purchase_project(batch_no) or get_produced_owners([batch_no]).get(batch_no)
+
+
+def get_elsewhere_qty(batch_nos):
+    """{batch: {label: qty}} held outside issuable warehouses — "In WIP", "At subcontractor",
+    or the excluded prefix itself."""
+    if not batch_nos:
+        return {}
+    labels = {"WIP": "In WIP", "SUB": "At subcontractor"}
+    values = {"batches": tuple(batch_nos)}
+    cases = []
+    for i, p in enumerate(excluded_prefixes()):
+        values[f"like{i}"] = p.replace("%", r"\%").replace("_", r"\_") + "%"
+        values[f"label{i}"] = labels.get(p, p)
+        cases.append(f"WHEN sbe.warehouse LIKE %(like{i})s THEN %(label{i})s")
+    if not cases:
+        return {}
+    rows = frappe.db.sql(
+        f"""SELECT sbe.batch_no, CASE {' '.join(cases)} END AS place, SUM(sbe.qty) AS qty
+            FROM `tabSerial and Batch Entry` sbe
+            JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
+            WHERE sbb.docstatus = 1 AND sbb.is_cancelled = 0 AND sbe.batch_no IN %(batches)s
+            GROUP BY sbe.batch_no, place HAVING place IS NOT NULL""",
+        values, as_dict=True,
+    )
+    out = defaultdict(dict)
+    for r in rows:
+        if flt(r.qty) > EPS:
+            out[r.batch_no][r.place] = round(flt(r.qty), 3)
+    return out
 
 
 def get_available_qty(batch_nos):
@@ -252,7 +451,7 @@ def get_issue_lines(batch_nos):
     return lines
 
 
-def get_reservation_state(batch_nos, exclude=None, issue_lines=None):
+def get_reservation_state(batch_nos, exclude=None, issue_lines=None, statuses=("Active",)):
     """{batch: {"available", "locations", "reservations"}} for the given batches.
 
     available     total in issuable warehouses
@@ -261,6 +460,7 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None):
                   from that warehouse — and roll, if it has one — since it was created) and
                   remaining_qty.
     `exclude` is a reservation name to leave out (used when validating that reservation).
+    `statuses` defaults to Active only — the only ones that hold stock.
     """
     batch_nos = list(dict.fromkeys(b for b in batch_nos if b))
     if not batch_nos:
@@ -268,8 +468,8 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None):
     locations = get_stock_locations(batch_nos)
     reservations = frappe.get_all(
         "Project Stock Reservation",
-        filters={"status": "Active", "batch_no": ["in", batch_nos]},
-        fields=["name", "batch_no", "warehouse", "roll_no", "production_project", "reserved_qty", "creation"],
+        filters={"status": ["in", list(statuses)], "batch_no": ["in", batch_nos]},
+        fields=["name", "status", "batch_no", "warehouse", "roll_no", "production_project", "reserved_qty", "creation"],
     )
     lines = issue_lines if issue_lines is not None else get_issue_lines(batch_nos)
 
@@ -295,6 +495,7 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None):
         )
         state[r.batch_no]["reservations"].append({
             "name": r.name,
+            "status": r.status,
             "production_project": r.production_project,
             "warehouse": r.warehouse,
             "roll_no": roll,
@@ -394,6 +595,15 @@ def validate_stock_entry(doc, method=None):
         frappe.log_error(title="Project stock reservation check failed (entry allowed through)")
 
 
+def _row_batches(row):
+    """Batches a Stock Entry row moves: its batch_no, else every batch in its bundle."""
+    if row.get("batch_no"):
+        return [row.batch_no]
+    if row.get("serial_and_batch_bundle"):
+        return frappe.get_all("Serial and Batch Entry", filters={"parent": row.serial_and_batch_bundle}, pluck="batch_no")
+    return []
+
+
 def _check(doc):
     field = roll_field()
     rows = [
@@ -402,23 +612,24 @@ def _check(doc):
     ]
     if not rows:
         return
+    batches = list({r.batch_no for r in rows})
 
-    # Fast path: the vast majority of batches have no reservation, and cost one query.
-    reserved_batches = frappe.get_all(
+    # Fast path: most batches have no reservation and no owner.
+    reserved_batches = set(frappe.get_all(
         "Project Stock Reservation",
-        filters={"status": "Active", "batch_no": ["in", list({r.batch_no for r in rows})]},
+        filters={"status": "Active", "batch_no": ["in", batches]},
         pluck="batch_no",
-    )
-    if not reserved_batches:
+    ))
+    owners = get_produced_owners(batches) if protect_produced() else {}
+    if not reserved_batches and not owners:
         return
-    reserved_batches = set(reserved_batches)
 
     projects = line_projects(doc)
     requested = defaultdict(float)          # (batch, warehouse, project) -> qty
     requested_roll = defaultdict(float)     # (batch, warehouse, roll, project) -> qty
     for row in rows:
         project = projects.get(row.name)
-        if row.batch_no not in reserved_batches or not project:
+        if not project or (row.batch_no not in reserved_batches and row.batch_no not in owners):
             continue
         qty = flt(row.transfer_qty or row.qty)
         requested[(row.batch_no, row.s_warehouse, project)] += qty
@@ -428,17 +639,26 @@ def _check(doc):
     if not requested:
         return
 
-    state = get_reservation_state(reserved_batches)
+    state = get_reservation_state({b for b, _, _ in requested})
     problems = []
 
     for (batch, wh, project), qty in requested.items():
         st = state.get(batch)
         res = reservations_at(st, wh) if st else []
-        if not res:
+        owner = owners.get(batch)
+        foreign = bool(owner) and not same_project(owner, project)
+        if not res and not foreign:
             continue
         loc = st["locations"].get(wh, {"available": 0.0, "rolls": {}})
-        allowed, free, own, total = allowed_issue_qty(loc["available"], res, project)
-        if qty > allowed + EPS:
+        allowed, free, own, total = allowed_issue_qty(loc["available"], res, project, owner=owner)
+        if qty <= allowed + EPS:
+            continue
+        if foreign:
+            problems.append(_(
+                "<b>{0}</b> in {1} was produced for project <b>{2}</b>. Issuing {3:g} to {4} needs a "
+                "reservation for {4} on the Stock Reservation page (reserved for {4} here: {5:g})."
+            ).format(batch, wh, owner, qty, project, own))
+        else:
             problems.append(_(
                 "<b>{0}</b> in {1}: issuing {2:g} to project {3}, but only {4:g} can go to it "
                 "(unreserved {5:g} + reserved for {3} {6:g}). Reserved for other projects: {7}."
@@ -451,7 +671,7 @@ def _check(doc):
         if not on_roll:
             continue
         loc = st["locations"].get(wh, {"available": 0.0, "rolls": {}})
-        allowed, *_ = allowed_issue_qty(loc["available"], res, project, loc["rolls"], roll)
+        allowed, *_ = allowed_issue_qty(loc["available"], res, project, loc["rolls"], roll, owner=owners.get(batch))
         if qty > allowed + EPS:
             problems.append(_(
                 "<b>{0}</b> roll <b>{1}</b> in {2} is reserved for {3} — it cannot be issued to project {4}."
@@ -462,6 +682,69 @@ def _check(doc):
             "<br>".join(problems),
             title=_("This stock is reserved for another project"),
         )
+
+
+# ── fulfilment ─────────────────────────────────────────────────────────────────
+
+def update_fulfilment(doc, method=None):
+    """doc_events hook: Stock Entry on_submit / on_cancel.
+
+    An Active reservation whose reserved qty has all been issued becomes Fulfilled; a
+    Fulfilled one that is short again (the issuing entry was cancelled) goes back to Active.
+    Runs on every enforced-type entry that touched a batch with such a reservation.
+    """
+    if doc.stock_entry_type not in ENFORCED_TYPES:
+        return
+    batches = {b for row in doc.items if row.s_warehouse for b in _row_batches(row) if b}
+    if batches:
+        refresh_fulfilment(batches)
+
+
+def refresh_fulfilment(batch_nos):
+    """Re-derive Active / Fulfilled for every reservation on these batches."""
+    batch_nos = list(batch_nos)
+    if not frappe.db.exists("Project Stock Reservation", {"status": ["in", ["Active", "Fulfilled"]], "batch_no": ["in", batch_nos]}):
+        return
+    state = get_reservation_state(batch_nos, statuses=("Active", "Fulfilled"))
+    for st in state.values():
+        for r in st["reservations"]:
+            done = r["issued_qty"] > EPS and r["remaining_qty"] <= EPS
+            if r["status"] == "Active" and done:
+                frappe.db.set_value("Project Stock Reservation", r["name"],
+                                    {"status": "Fulfilled", "fulfilled_on": frappe.utils.now_datetime()})
+            elif r["status"] == "Fulfilled" and not done:
+                frappe.db.set_value("Project Stock Reservation", r["name"], {"status": "Active", "fulfilled_on": None})
+
+
+# ── preview: what the produced-stock rule would block ─────────────────────────
+
+def preview_produced_conflicts(days=30):
+    """Submitted issue lines in the last `days` that took a batch produced for one project
+    and gave it to another, with no reservation. Read-only; run with
+      bench --site <site> execute pranera_planning.reservation.preview_produced_conflicts --kwargs "{'days': 30}"
+    """
+    lines = frappe.db.sql(
+        f"""SELECT se.name AS stock_entry, se.posting_date, se.stock_entry_type, sed.batch_no,
+                   sed.s_warehouse, sed.transfer_qty AS qty, {PROJECT_EXPR} AS project
+            FROM `tabStock Entry Detail` sed
+            JOIN `tabStock Entry` se ON se.name = sed.parent
+            LEFT JOIN `tabWork Order` wo ON wo.name = se.work_order
+            WHERE se.docstatus = 1 AND se.posting_date >= DATE_SUB(CURDATE(), INTERVAL %(days)s DAY)
+              AND se.stock_entry_type IN %(types)s AND IFNULL(sed.batch_no, '') <> ''
+              AND IFNULL(sed.s_warehouse, '') <> '' AND IFNULL(sed.is_finished_item, 0) = 0""",
+        {"days": int(days), "types": ENFORCED_TYPES}, as_dict=True,
+    )
+    lines = [l for l in lines if is_pool_warehouse(l.s_warehouse) and l.project]
+    owners = get_produced_owners([l.batch_no for l in lines])
+    out = [
+        {**l, "produced_for": owners[l.batch_no]}
+        for l in lines
+        if l.batch_no in owners and not same_project(owners[l.batch_no], l.project)
+    ]
+    summary = {"issue_lines_checked": len(lines), "would_need_reservation": len(out),
+               "batches": len({l["batch_no"] for l in out})}
+    print(frappe.as_json(summary))
+    return out
 
 
 def _others(reservations, project):

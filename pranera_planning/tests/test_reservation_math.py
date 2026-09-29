@@ -83,5 +83,34 @@ class TestReservationMath(unittest.TestCase):
         self.assertEqual(allowed, 15)
 
 
+    # ── produced stock belongs to the project it was made for ───────────────
+    def test_owner_may_use_unreserved_stock(self):
+        allowed, free, *_ = allowed_issue_qty(100, [], "A", owner="A")
+        self.assertEqual((allowed, free), (100, 100))
+
+    def test_other_project_needs_a_reservation(self):
+        allowed, free, *_ = allowed_issue_qty(100, [], "B", owner="A")
+        self.assertEqual((allowed, free), (0, 100))
+
+    def test_other_project_gets_exactly_what_is_reserved_for_it(self):
+        res = [{"production_project": "B", "reserved_qty": 30, "issued_qty": 10}]
+        allowed, *_ = allowed_issue_qty(100, res, "B", owner="A")
+        self.assertEqual(allowed, 20)
+        allowed, *_ = allowed_issue_qty(100, res, "A", owner="A")      # owner keeps the rest
+        self.assertEqual(allowed, 80)
+        allowed, *_ = allowed_issue_qty(100, res, "C", owner="A")      # a third project: nothing
+        self.assertEqual(allowed, 0)
+
+    def test_owner_match_is_case_insensitive(self):
+        allowed, *_ = allowed_issue_qty(50, [], "25prod001", owner="25PROD001")
+        self.assertEqual(allowed, 50)
+
+    def test_foreign_owned_roll_gets_no_spare_balance(self):
+        rolls = {"R1": 25}
+        res = [{"production_project": "C", "roll_no": "R1", "reserved_qty": 10, "issued_qty": 0}]
+        allowed, *_ = allowed_issue_qty(100, res, "B", rolls, "R1", owner="A")
+        self.assertEqual(allowed, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

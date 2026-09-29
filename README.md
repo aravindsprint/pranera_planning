@@ -106,6 +106,25 @@ Site config (`site_config.json`), all optional:
 | `project_stock_reservation_roll_item_groups` | `["FABRIC","COLLAR","CUFF"]` | item group trees reserved by roll (missing groups ignored) |
 | `project_stock_reservation_roll_field` | `"custom_roll_no"` | Stock Entry Detail field holding the roll no. |
 
+**Fulfilled.** A reservation becomes `Fulfilled` automatically when everything reserved has
+been issued (checked on every Stock Entry submit of the enforced types), and goes back to
+`Active` if cancelling an entry reopens it. The `mark_fulfilled_reservations` patch catches up
+reservations that were already fully issued.
+
+**Produced stock belongs to its project.** A batch produced for a project — finished item of a
+Manufacture entry (Work Order's project, else the entry's) or received on a Subcontracting
+Receipt (receipt item's project, else its Subcontracting Order / Purchase Order item's) — can
+only be issued to another project up to what is reserved for that project on the page.
+Purchased batches stay shared until reserved. Switch off with site config
+`project_stock_reservation_protect_produced: 0`. To see what the rule would have blocked:
+
+    bench --site <site> execute pranera_planning.reservation.preview_produced_conflicts --kwargs "{'days': 30}"
+
+**Produced section.** For a project with produced batches, the page shows them by stage
+(`project_stock_reservation_stages`, default GKF → Greige, DKF → Dyed, SKF → Finished, else the
+item group), with input vs produced per stage, and where the output is now (stores, WIP, at the
+subcontractor). Produced batches can be reserved for another project from the same table.
+
 Which project an issue belongs to: Material Transfer for Manufacture / Manufacture take the
 Work Order's project (else the entry's own). Send to Subcontractor takes, per line, the project of
 the Subcontracting Order item it supplies material for (`sco_rm_detail`), else of the Purchase Order

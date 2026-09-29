@@ -51,3 +51,9 @@ doc_events = {
 fixtures = [
     {"doctype": "Project Type", "filters": [["name", "in", ["Purchase", "Production"]]]},
 ]
+
+scheduler_events = {
+    "daily": [
+        "pranera_planning.reservation.refresh_all_fulfilment",
+    ],
+}

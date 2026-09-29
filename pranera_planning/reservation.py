@@ -631,7 +631,7 @@ def get_issue_lines(batch_nos):
     values.update(batches=tuple(batch_nos), types=ENFORCED_TYPES)
     lines = frappe.db.sql(
         f"""SELECT sbe.batch_no, sbe.warehouse, {_roll_expr()} AS roll_no, {PROJECT_EXPR} AS project,
-                   ABS(sbe.qty) AS qty, se.creation AS creation
+                   ABS(sbe.qty) AS qty, se.creation AS creation, se.name AS voucher
             FROM `tabSerial and Batch Entry` sbe
             JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
             JOIN `tabStock Entry` se ON se.name = sbb.voucher_no
@@ -898,20 +898,27 @@ def update_fulfilment(doc, method=None):
     An Active reservation whose reserved qty has all been issued becomes Fulfilled; a
     Fulfilled one that is short again (the issuing entry was cancelled) goes back to Active.
     Runs on every enforced-type entry that touched a batch with such a reservation.
+
+    On cancel the entry itself is left out explicitly: depending on the order in which the
+    cancel updates the entry and its batch bundles, it can still look submitted while this
+    hook runs.
     """
     if doc.stock_entry_type not in ENFORCED_TYPES:
         return
     batches = {b for row in doc.items if row.s_warehouse for b in _row_batches(row) if b}
     if batches:
-        refresh_fulfilment(batches)
+        refresh_fulfilment(batches, exclude_voucher=doc.name if doc.docstatus == 2 else None)
 
 
-def refresh_fulfilment(batch_nos):
+def refresh_fulfilment(batch_nos, exclude_voucher=None):
     """Re-derive Active / Fulfilled for every reservation on these batches."""
     batch_nos = list(batch_nos)
-    if not frappe.db.exists("Project Stock Reservation", {"status": ["in", ["Active", "Fulfilled"]], "batch_no": ["in", batch_nos]}):
+    if not batch_nos or not frappe.db.exists(
+        "Project Stock Reservation", {"status": ["in", ["Active", "Fulfilled"]], "batch_no": ["in", batch_nos]}
+    ):
         return
-    state = get_reservation_state(batch_nos, statuses=("Active", "Fulfilled"))
+    lines = [l for l in get_issue_lines(batch_nos) if l.voucher != exclude_voucher]
+    state = get_reservation_state(batch_nos, issue_lines=lines, statuses=("Active", "Fulfilled"))
     for st in state.values():
         for r in st["reservations"]:
             done = r["issued_qty"] > EPS and r["remaining_qty"] <= EPS
@@ -920,6 +927,15 @@ def refresh_fulfilment(batch_nos):
                                     {"status": "Fulfilled", "fulfilled_on": frappe.utils.now_datetime()})
             elif r["status"] == "Fulfilled" and not done:
                 frappe.db.set_value("Project Stock Reservation", r["name"], {"status": "Active", "fulfilled_on": None})
+
+
+def refresh_all_fulfilment():
+    """Scheduler (daily): safety net re-deriving Active / Fulfilled for every open reservation."""
+    batches = frappe.get_all("Project Stock Reservation", filters={"status": ["in", ["Active", "Fulfilled"]]},
+                             pluck="batch_no", distinct=True)
+    for i in range(0, len(batches), 200):
+        refresh_fulfilment(batches[i:i + 200])
+    frappe.db.commit()
 
 
 # ── preview: what the produced-stock rule would block ─────────────────────────

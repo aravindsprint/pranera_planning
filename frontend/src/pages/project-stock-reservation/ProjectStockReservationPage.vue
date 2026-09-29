@@ -6,7 +6,12 @@
       <div class="page-toolbar">
         <div class="picker">
           <label class="form-label" for="pp">Purchase project</label>
-          <LinkField id="pp" v-model="project" doctype="Project" title-field="project_name" placeholder="e.g. 26PTIN1710" @change="load" />
+          <LinkField
+            id="pp" v-model="project" doctype="Project" placeholder="e.g. 26PTIN1710"
+            :search-fn="searchPurchaseProjects" empty-label="No project with received stock found"
+            @change="load"
+          />
+          <p class="hint">Only projects with received stock, and not typed Production.</p>
         </div>
         <button class="btn btn-primary" :disabled="!project || loading" @click="load">Show stock</button>
       </div>
@@ -124,7 +129,12 @@
 
         <div class="form-group">
           <label class="form-label" for="prod">Reserve for project</label>
-          <LinkField id="prod" v-model="dlg.production_project" doctype="Project" title-field="project_name" placeholder="Production project" />
+          <LinkField
+            id="prod" v-model="dlg.production_project" doctype="Project" title-field="project_name"
+            :filters="[['Project', 'project_type', 'in', ['Production', '']]]"
+            placeholder="Production project"
+          />
+          <p class="hint">Projects typed Purchase are hidden here — this list is Production projects (or not yet classified).</p>
         </div>
         <div class="form-group">
           <label class="form-label" for="qty">Quantity ({{ dlg.row.uom }})</label>
@@ -154,6 +164,13 @@ import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'
 import { callMessage, createDoc, updateDoc } from '@/api/frappe'
+
+// Only Projects that actually have a purchased batch — plain Project search would include
+// every project in the system, most of which never had anything bought under them and only
+// lead to "No stock received under this project" if picked here.
+async function searchPurchaseProjects(txt) {
+  return await callMessage('pranera_planning.api.reservation.search_purchase_projects', { txt })
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -244,6 +261,7 @@ onMounted(() => {
 
 <style scoped>
 .picker { width: 280px; max-width: 100%; }
+.hint { font-size: 12px; color: var(--slate-500); margin-top: 5px; }
 .page-toolbar { align-items: flex-end; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }

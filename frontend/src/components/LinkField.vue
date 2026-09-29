@@ -8,7 +8,7 @@
     />
     <ul v-if="open" class="lf__list" role="listbox">
       <li v-if="loading" class="lf__hint">Searching…</li>
-      <li v-else-if="!options.length" class="lf__hint">No {{ doctype }} found</li>
+      <li v-else-if="!options.length" class="lf__hint">{{ emptyLabel || `No ${doctype} found` }}</li>
       <li v-for="o in options" :key="o.name" class="lf__opt" role="option" @mousedown.prevent="pick(o.name)">
         {{ o.name }}<span v-if="o.title && o.title !== o.name" class="lf__title"> — {{ o.title }}</span>
       </li>
@@ -32,6 +32,11 @@ const props = defineProps({
   // Doctype field to search and show alongside the ID (e.g. "project_name" on Project) —
   // the picked/emitted value is always the ID, this only affects what's searched and shown.
   titleField: { type: String, default: '' },
+  // Override the default "search this doctype's own fields" with a custom async source —
+  // e.g. only Projects that have actually purchased stock, which needs a join no generic
+  // doctype filter can express. Signature: (text) => Promise<[{ name, title }]>.
+  searchFn: { type: Function, default: null },
+  emptyLabel: { type: String, default: '' },
 })
 const emit = defineEmits(['update:modelValue', 'change'])
 
@@ -50,18 +55,24 @@ async function search() {
   loading.value = true
   try {
     const q = text.value.trim()
-    const fields = props.titleField ? ['name', props.titleField] : ['name']
-    // Matching name OR the title field is what makes typing "Test" find PROJ-0001 whose
-    // project_name is "Test" — id-only search would miss it entirely.
-    const orFilters = q
-      ? props.titleField
-        ? [[props.doctype, 'name', 'like', `%${q}%`], [props.doctype, props.titleField, 'like', `%${q}%`]]
-        : [[props.doctype, 'name', 'like', `%${q}%`]]
-      : []
-    const rows = await getList(props.doctype, {
-      filters: props.filters, orFilters, fields, orderBy: 'modified desc', limit: 15,
-    })
-    if (mine === seq) options.value = rows.map((r) => ({ name: r.name, title: props.titleField ? r[props.titleField] : '' }))
+    let rows
+    if (props.searchFn) {
+      rows = await props.searchFn(q)
+    } else {
+      const fields = props.titleField ? ['name', props.titleField] : ['name']
+      // Matching name OR the title field is what makes typing "Test" find PROJ-0001 whose
+      // project_name is "Test" — id-only search would miss it entirely.
+      const orFilters = q
+        ? props.titleField
+          ? [[props.doctype, 'name', 'like', `%${q}%`], [props.doctype, props.titleField, 'like', `%${q}%`]]
+          : [[props.doctype, 'name', 'like', `%${q}%`]]
+        : []
+      const found = await getList(props.doctype, {
+        filters: props.filters, orFilters, fields, orderBy: 'modified desc', limit: 15,
+      })
+      rows = found.map((r) => ({ name: r.name, title: props.titleField ? r[props.titleField] : '' }))
+    }
+    if (mine === seq) options.value = rows
   } catch {
     if (mine === seq) options.value = []
   } finally {

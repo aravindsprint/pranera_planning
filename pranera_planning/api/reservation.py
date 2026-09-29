@@ -10,6 +10,44 @@ from pranera_planning.reservation_math import same_project
 
 
 @frappe.whitelist()
+def search_purchase_projects(txt=""):
+    """Projects that have actually received batch-tracked stock — for the "Purchase
+    project" picker. A plain Project search would offer every project in the system,
+    including ones that never bought anything and would just land on the empty state.
+
+    Matches on the project ID or its project_name, same as LinkField's default search,
+    but scoped to `EXISTS (a submitted Purchase Receipt line, with a batch, under this
+    project)` instead of every Project row. Same permission gate as the page's other
+    endpoint, since this exists purely to feed it.
+
+    Also excludes a project explicitly typed Production (Project's standard project_type
+    field, not a custom one) — an
+    unclassified project (blank) is still offered, same "allow until classified, block
+    once wrong" rule the doctype's own validate() applies.
+
+    Returns `{name, title}` rows — the shape LinkField's `search-fn` prop expects, title
+    being what's shown alongside the ID, not what gets picked or emitted.
+    """
+    frappe.has_permission("Project Stock Reservation", "read", throw=True)
+    like = f"%{txt.strip()}%"
+    rows = frappe.db.sql(
+        """SELECT DISTINCT p.name, p.project_name
+           FROM `tabProject` p
+           WHERE (p.name LIKE %(like)s OR IFNULL(p.project_name, '') LIKE %(like)s)
+             AND IFNULL(p.project_type, '') != 'Production'
+             AND EXISTS (
+               SELECT 1 FROM `tabPurchase Receipt Item` pri
+               JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
+               WHERE pri.project = p.name AND IFNULL(pri.batch_no, '') <> ''
+             )
+           ORDER BY p.modified DESC
+           LIMIT 15""",
+        {"like": like}, as_dict=True,
+    )
+    return [{"name": r.name, "title": r.project_name} for r in rows]
+
+
+@frappe.whitelist()
 def get_purchase_project_stock(project, item_group=None):
     """Everything the Reservation page needs for one purchase project.
 

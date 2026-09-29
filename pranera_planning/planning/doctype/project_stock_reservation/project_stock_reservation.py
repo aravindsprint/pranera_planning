@@ -15,6 +15,7 @@ class ProjectStockReservation(Document):
             frappe.throw(_("Reserved Qty must be greater than zero."))
 
         self.validate_batch()
+        self.validate_project_types()
         self.validate_unique_active()
         if self.status == "Active":
             self.validate_capacity()
@@ -33,6 +34,36 @@ class ProjectStockReservation(Document):
             frappe.throw(_("Batch {0} has no purchase project (no submitted Purchase Receipt with a project).").format(self.batch_no))
         if not same_project(project, self.purchase_project):
             frappe.throw(_("Batch {0} was purchased under project {1}, not {2}.").format(self.batch_no, project, self.purchase_project))
+
+    def validate_project_types(self):
+        """A Purchase project is where material is bought; a Production project is where
+        it gets reserved and consumed. This is what actually stops the two pickers on the
+        page being mixed up — that's a dropdown filter, which only helps if nobody types
+        or pastes a project name directly.
+
+        Uses Project's own standard project_type field (Link -> Project Type), not a
+        custom field — Purchase and Production are two new Project Type records this app
+        ships as a fixture, alongside whatever Project Types already exist on the site.
+
+        An unclassified project (project_type blank on the Project record) is let through
+        with a warning rather than blocked outright, since no existing project has this
+        set until someone goes back and classifies it. A project typed the *wrong* way —
+        including one of the pre-existing types like Internal or External — is a real
+        mistake and is always blocked.
+        """
+        purchase_type = frappe.db.get_value("Project", self.purchase_project, "project_type")
+        production_type = frappe.db.get_value("Project", self.production_project, "project_type")
+
+        if purchase_type and purchase_type != "Purchase":
+            frappe.throw(_("{0} is typed as {1}, not Purchase — check you have the right project.").format(self.purchase_project, purchase_type))
+        if production_type and production_type != "Production":
+            frappe.throw(_("{0} is typed as {1}, not Production — check you have the right project.").format(self.production_project, production_type))
+
+        unclassified = [p for p, t in ((self.purchase_project, purchase_type), (self.production_project, production_type)) if not t]
+        if unclassified:
+            frappe.msgprint(_(
+                "Project Type is not set on {0}. Set it on the Project record so a mix-up here gets caught automatically."
+            ).format(", ".join(unclassified)), indicator="orange", alert=True)
 
     def validate_unique_active(self):
         """One Active row per (batch, project, sales_order) — a project may hold a pooled

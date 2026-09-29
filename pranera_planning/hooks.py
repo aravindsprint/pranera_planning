@@ -33,3 +33,13 @@ doc_events = {
         "validate": "pranera_planning.reservation.validate_stock_entry",
     },
 }
+
+# Project.project_type (Link -> Project Type) is a STANDARD field, already on the form —
+# no Custom Field needed. What's missing is two option records: your Project Type list
+# today is Other / External / Internal, so this adds "Purchase" and "Production" as two
+# more, purely additive — the existing three are untouched. `bench migrate` creates them
+# if missing; nothing else in this filter, so no other app's Project Type records are
+# ever exported here.
+fixtures = [
+    {"doctype": "Project Type", "filters": [["name", "in", ["Purchase", "Production"]]]},
+]

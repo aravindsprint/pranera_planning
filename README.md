@@ -116,6 +116,13 @@ Direct Delivery. Adjust with site config `project_stock_reservation_excluded_war
 when a Work Order or Subcontracting Order is submitted. The `release_reservations_outside_stores`
 patch releases Active reservations that sit in such a warehouse.
 
+**Use the reservation first.** While a production project still has reserved stock of an item
+waiting, it must issue that item from the reservation — the reserved batch, from the reserved
+warehouse (and the reserved roll) — not from other free stock or the same batch elsewhere.
+Issuing more than is reserved is fine once the reserved stock is all being used; a reservation
+whose stock is no longer at its location is not insisted on. Site config
+`project_stock_reservation_use_reserved_first`: `"block"` (default), `"warn"` or `"off"`.
+
 **Fulfilled.** A reservation becomes `Fulfilled` automatically when everything reserved has
 been issued (checked on every Stock Entry submit of the enforced types), and goes back to
 `Active` if cancelling an entry reopens it. The `mark_fulfilled_reservations` patch catches up

@@ -151,3 +151,47 @@ def place_packed_rolls(room, packed, seen=()):
         placed.setdefault(wh, {})[roll] = placed.get(wh, {}).get(roll, 0.0) + float(weight)
         room[wh] -= float(weight)
     return placed, uncertain
+
+
+def reserved_first(reservations, lines):
+    """Does an entry issue an item to a project from outside that project's own reservations
+    while those reservations still have stock waiting?
+
+    reservations  the project's Active reservations of one item:
+                  [{"name", "batch_no", "warehouse", "roll_no", "usable_qty"}], where
+                  usable_qty = what is still reserved AND still physically at that location
+                  (a reservation whose stock has gone can't be insisted on)
+    lines         the entry's issue lines of that item to that project:
+                  [{"batch_no", "warehouse", "roll_no", "qty"}]
+
+    A line draws on a reservation at the same batch and warehouse — and the same roll, when
+    both name one (a line with no roll no. can draw on a roll reservation of its batch).
+    Whatever a line can't place on a reservation is "outside".
+
+    Returns {"covered", "outside", "usable", "breach"}: breach is True when something is
+    issued from outside while the reservations are not fully used by this entry. Issuing
+    more than is reserved is fine — once the reserved stock is all being used.
+    """
+    left = {r["name"]: max(0.0, float(r.get("usable_qty") or 0)) for r in reservations}
+    usable = sum(left.values())
+    covered = outside = 0.0
+    for line in lines:
+        qty = float(line["qty"] or 0)
+        for r in reservations:
+            if qty <= EPS:
+                break
+            if r["batch_no"] != line["batch_no"] or r["warehouse"] != line["warehouse"]:
+                continue
+            if r.get("roll_no") and line.get("roll_no") and r["roll_no"] != line["roll_no"]:
+                continue
+            take = min(qty, left[r["name"]])
+            left[r["name"]] -= take
+            covered += take
+            qty -= take
+        outside += max(0.0, qty)
+    return {
+        "covered": covered,
+        "outside": outside,
+        "usable": usable,
+        "breach": outside > EPS and covered < usable - EPS,
+    }

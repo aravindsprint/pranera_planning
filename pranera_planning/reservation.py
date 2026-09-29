@@ -45,6 +45,9 @@ Stock Entry submit), and goes back to Active if cancelling that entry reopens it
 Site config (all optional)
 --------------------------
 project_stock_reservation_enforcement                  0 switches enforcement off (default 1)
+project_stock_reservation_use_reserved_first          "block" (default) / "warn" / "off": while a project
+                                                       has reserved stock of an item waiting, it must issue
+                                                       that item from the reservation (batch, warehouse, roll)
 project_stock_reservation_protect_produced             0 lets produced batches go to any project
                                                        without a reservation (default 1)
 project_stock_reservation_stages                       [[item code prefix, stage], ...] for the
@@ -67,7 +70,7 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation_math import (
-    EPS, allowed_issue_qty, clean_roll, place_packed_rolls, remaining_qty, same_project,
+    EPS, allowed_issue_qty, clean_roll, place_packed_rolls, remaining_qty, reserved_first, same_project,
 )
 
 ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", "Manufacture")
@@ -127,6 +130,13 @@ def is_enabled():
 
 def excluded_prefixes():
     return tuple(frappe.conf.get("project_stock_reservation_excluded_warehouse_prefixes") or DEFAULT_EXCLUDED_PREFIXES)
+
+
+def reserved_first_mode():
+    """"block" (default), "warn" or "off": a project must issue an item from its own
+    reservation while that reservation still has stock waiting."""
+    mode = str(frappe.conf.get("project_stock_reservation_use_reserved_first") or "block").lower()
+    return mode if mode in ("block", "warn", "off") else "block"
 
 
 def protect_produced():
@@ -786,6 +796,7 @@ def validate_stock_entry(doc, method=None):
         return
     try:
         _check(doc)
+        _check_reserved_first(doc)
     except frappe.ValidationError:
         raise
     except Exception:
@@ -967,6 +978,85 @@ def preview_produced_conflicts(days=30):
                "batches": len({l["batch_no"] for l in out})}
     print(frappe.as_json(summary))
     return out
+
+
+def _check_reserved_first(doc):
+    """A project that still has reserved stock of an item waiting must issue that item from
+    its reservation — the reserved batch, from the reserved warehouse (and the reserved roll)
+    — not from other free stock. Issuing more than is reserved is fine once the reserved
+    stock is all being used. A reservation whose stock is no longer at its location is not
+    insisted on. See reservation_math.reserved_first.
+    """
+    mode = reserved_first_mode()
+    if mode == "off":
+        return
+    field = roll_field()
+    rows = [
+        row for row in doc.items
+        if row.batch_no and row.s_warehouse and not row.is_finished_item and is_pool_warehouse(row.s_warehouse)
+    ]
+    if not rows:
+        return
+    projects = line_projects(doc)
+    wanted = {(projects.get(r.name) or "").casefold() for r in rows} - {""}
+    if not wanted:
+        return
+    reservations = [
+        r for r in frappe.get_all(
+            "Project Stock Reservation",
+            filters={"status": "Active", "item_code": ["in", list({r.item_code for r in rows})]},
+            fields=["name", "production_project", "item_code", "batch_no", "warehouse", "roll_no"],
+        )
+        if (r.production_project or "").casefold() in wanted
+    ]
+    if not reservations:
+        return
+
+    state = get_reservation_state({r.batch_no for r in reservations})
+    remaining = {x["name"]: x["remaining_qty"] for st in state.values() for x in st["reservations"]}
+
+    groups = defaultdict(lambda: {"reservations": [], "lines": [], "project": None})
+    for r in reservations:
+        loc = state.get(r.batch_no, {}).get("locations", {}).get(r.warehouse, {"available": 0.0, "rolls": {}})
+        roll = clean_roll(r.roll_no)
+        on_hand = loc["rolls"].get(roll, loc["available"]) if roll else loc["available"]
+        g = groups[(r.production_project.casefold(), r.item_code)]
+        g["project"] = r.production_project
+        g["reservations"].append({
+            "name": r.name, "batch_no": r.batch_no, "warehouse": r.warehouse, "roll_no": roll,
+            "usable_qty": max(0.0, min(remaining.get(r.name, 0.0), on_hand)),
+        })
+    for row in rows:
+        key = ((projects.get(row.name) or "").casefold(), row.item_code)
+        if key in groups:
+            groups[key]["lines"].append({
+                "batch_no": row.batch_no, "warehouse": row.s_warehouse,
+                "roll_no": clean_roll(row.get(field)), "qty": flt(row.transfer_qty or row.qty),
+            })
+
+    problems = []
+    for (_, item), g in groups.items():
+        if not g["lines"]:
+            continue
+        result = reserved_first(g["reservations"], g["lines"])
+        if not result["breach"]:
+            continue
+        where = "<br>".join(
+            f"&nbsp;&nbsp;{r['name']}: {r['usable_qty']:g} of batch <b>{r['batch_no']}</b> in {r['warehouse']}"
+            + (f", roll {r['roll_no']}" if r["roll_no"] else "")
+            for r in g["reservations"] if r["usable_qty"] > EPS
+        )
+        problems.append(_(
+            "Project <b>{0}</b> has {1:g} of <b>{2}</b> reserved and waiting, but this entry issues {3:g} "
+            "from other stock. Issue it from the reservation first:<br>{4}<br>"
+            "(or release the reservation on the Stock Reservation page if it is no longer needed)."
+        ).format(g["project"], result["usable"], item, result["outside"], where))
+
+    if not problems:
+        return
+    if mode == "block":
+        frappe.throw("<br><br>".join(problems), title=_("Use the reserved stock first"))
+    frappe.msgprint("<br><br>".join(problems), title=_("Reserved stock is waiting"), indicator="orange")
 
 
 def _others(reservations, project):

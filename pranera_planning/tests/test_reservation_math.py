@@ -1,7 +1,7 @@
 import unittest
 
 from pranera_planning.reservation_math import (
-    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, remaining_qty,
+    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, remaining_qty, reserved_first,
     same_project,
 )
 
@@ -148,6 +148,40 @@ class TestReservationMath(unittest.TestCase):
     def test_target_gone_falls_back_to_the_fullest_warehouse(self):
         placed, _ = place_packed_rolls({"A": 0, "B": 10, "C": 60}, [("R1", 25, "A")])
         self.assertEqual(placed, {"C": {"R1": 25}})
+
+
+    # ── a project must use its own reservation first ─────────────────────────
+    RES = [{"name": "PSR-9", "batch_no": "1234", "warehouse": "Stores", "roll_no": "", "usable_qty": 2000}]
+
+    def test_issuing_the_reserved_batch_is_fine(self):
+        r = reserved_first(self.RES, [{"batch_no": "1234", "warehouse": "Stores", "qty": 500}])
+        self.assertFalse(r["breach"])
+        self.assertEqual((r["covered"], r["outside"]), (500, 0))
+
+    def test_another_batch_while_reservation_waits_is_a_breach(self):
+        r = reserved_first(self.RES, [{"batch_no": "5678", "warehouse": "Stores", "qty": 500}])
+        self.assertTrue(r["breach"])
+
+    def test_reserved_batch_from_another_warehouse_is_a_breach(self):
+        r = reserved_first(self.RES, [{"batch_no": "1234", "warehouse": "Stores 2", "qty": 500}])
+        self.assertTrue(r["breach"])
+
+    def test_extra_beyond_the_reservation_is_fine_once_it_is_all_used(self):
+        lines = [{"batch_no": "1234", "warehouse": "Stores", "qty": 2000},
+                 {"batch_no": "5678", "warehouse": "Stores", "qty": 500}]
+        self.assertFalse(reserved_first(self.RES, lines)["breach"])
+        lines[0]["qty"] = 1500
+        self.assertTrue(reserved_first(self.RES, lines)["breach"])
+
+    def test_reservation_whose_stock_is_gone_is_not_insisted_on(self):
+        res = [dict(self.RES[0], usable_qty=0)]
+        self.assertFalse(reserved_first(res, [{"batch_no": "5678", "warehouse": "Stores", "qty": 500}])["breach"])
+
+    def test_roll_reservation_needs_that_roll(self):
+        res = [{"name": "PSR-1", "batch_no": "G1", "warehouse": "Stores", "roll_no": "R4", "usable_qty": 400}]
+        self.assertTrue(reserved_first(res, [{"batch_no": "G1", "warehouse": "Stores", "roll_no": "R1", "qty": 400}])["breach"])
+        self.assertFalse(reserved_first(res, [{"batch_no": "G1", "warehouse": "Stores", "roll_no": "R4", "qty": 400}])["breach"])
+        self.assertFalse(reserved_first(res, [{"batch_no": "G1", "warehouse": "Stores", "roll_no": "", "qty": 400}])["breach"])
 
 
 if __name__ == "__main__":

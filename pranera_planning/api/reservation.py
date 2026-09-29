@@ -14,12 +14,12 @@ PROJECT_TYPES = ("Purchase", "Production")
 
 @frappe.whitelist()
 def search_purchase_projects(txt="", project_types=None):
-    """Projects that have actually received batch-tracked stock — for the page's "Project"
-    picker. A plain Project search would offer every project in the system, including ones
-    that never received anything and would just land on the empty state.
+    """Projects the page has something to show for — for its "Project" picker: ones that
+    have received batch-tracked stock (a submitted Purchase Receipt line with a batch under
+    the project), or that hold an active reservation of someone else's stock. A plain
+    Project search would offer every project, most of which land on the empty state.
 
-    Matches on the project ID or its project_name, scoped to `EXISTS (a submitted Purchase
-    Receipt line, with a batch, under this project)`.
+    Matches on the project ID or its project_name.
 
     `project_types` is the page's Purchase / Production checkboxes (a list, or its JSON).
     Empty — nothing ticked, or both ticked — means no type filter at all, unclassified
@@ -42,10 +42,16 @@ def search_purchase_projects(txt="", project_types=None):
            FROM `tabProject` p
            WHERE (p.name LIKE %(like)s OR IFNULL(p.project_name, '') LIKE %(like)s)
              {type_filter}
-             AND EXISTS (
-               SELECT 1 FROM `tabPurchase Receipt Item` pri
-               JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
-               WHERE pri.project = p.name AND IFNULL(pri.batch_no, '') <> ''
+             AND (
+               EXISTS (
+                 SELECT 1 FROM `tabPurchase Receipt Item` pri
+                 JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
+                 WHERE pri.project = p.name AND IFNULL(pri.batch_no, '') <> ''
+               )
+               OR EXISTS (
+                 SELECT 1 FROM `tabProject Stock Reservation` psr
+                 WHERE psr.production_project = p.name AND psr.status = 'Active'
+               )
              )
            ORDER BY p.modified DESC
            LIMIT 15""",
@@ -66,6 +72,9 @@ def get_purchase_project_stock(project, item_group=None):
     with what's reserved and free there. For roll items (fabric, collar, cuff —
     `roll_tracked`), each location lists its numbered rolls and an "unnumbered" remainder,
     since rolls are reserved individually.
+
+    `reserved_for` lists the active reservations *held by* `project` on other projects'
+    stock — what a Production project sees — with `reserved_totals`.
 
     `item_group` is optional and restricts the result to that Item Group's tree (e.g.
     "YARN", "FABRIC") — pass nothing to see every batch-tracked item bought under the
@@ -96,8 +105,14 @@ def get_purchase_project_stock(project, item_group=None):
         params, as_dict=True,
     )
     batch_nos = [b.batch_no for b in batches]
+    reserved_for = _reserved_for(project)
+    out = {
+        "project": project,
+        "reserved_for": reserved_for,
+        "reserved_totals": _reserved_totals(reserved_for),
+    }
     if not batch_nos:
-        return {"project": project, "rows": [], "totals": _totals([])}
+        return {**out, "rows": [], "totals": _totals([])}
 
     lines = get_issue_lines(batch_nos)
     state = get_reservation_state(batch_nos, issue_lines=lines)
@@ -132,7 +147,54 @@ def get_purchase_project_stock(project, item_group=None):
             "locations": locations,
             "reservations": st["reservations"],
         })
-    return {"project": project, "rows": rows, "totals": _totals(rows)}
+    return {**out, "rows": rows, "totals": _totals(rows)}
+
+
+def _reserved_for(project):
+    """Active reservations held by `project`, one row each, with how much is still in stores
+    at the reserved location to back what remains."""
+    res = frappe.get_all(
+        "Project Stock Reservation",
+        filters={"status": "Active", "production_project": project},
+        fields=["name", "purchase_project", "item_code", "item_name", "stock_uom", "batch_no",
+                "warehouse", "roll_no", "sales_order", "creation"],
+        order_by="creation desc",
+    )
+    if not res:
+        return []
+    state = get_reservation_state([r.batch_no for r in res])
+    out = []
+    for r in res:
+        st = state.get(r.batch_no) or {"locations": {}, "reservations": []}
+        live = next((x for x in st["reservations"] if x["name"] == r.name), None)
+        if not live:
+            continue
+        loc = st["locations"].get(r.warehouse, {"available": 0.0, "rolls": {}})
+        on_hand = loc["available"]
+        if live["roll_no"] and live["roll_no"] in loc["rolls"]:
+            on_hand = max(0.0, loc["rolls"][live["roll_no"]])
+        out.append({
+            "name": r.name,
+            "purchase_project": r.purchase_project,
+            "item_code": r.item_code,
+            "item_name": r.item_name,
+            "uom": r.stock_uom,
+            "batch_no": r.batch_no,
+            "warehouse": r.warehouse,
+            "roll_no": live["roll_no"],
+            "sales_order": r.sales_order,
+            "production_project": project,
+            "reserved_qty": live["reserved_qty"],
+            "issued_qty": round(live["issued_qty"], 3),
+            "remaining_qty": round(live["remaining_qty"], 3),
+            "in_stores_qty": round(min(live["remaining_qty"], max(0.0, on_hand)), 3),
+        })
+    return out
+
+
+def _reserved_totals(rows):
+    keys = ("reserved_qty", "issued_qty", "remaining_qty", "in_stores_qty")
+    return {k: round(sum(r[k] for r in rows), 3) for k in keys}
 
 
 def _locations(st, roll_tracked):

@@ -9,7 +9,7 @@
           <div class="picker__row">
             <LinkField
               id="pp" v-model="project" doctype="Project" placeholder="e.g. 26PTIN1710"
-              :search-fn="searchProjects" empty-label="No project with received stock found"
+              :search-fn="searchProjects" empty-label="No project with received or reserved stock found"
               @change="load"
             />
             <button class="btn btn-primary" :disabled="!project || loading" @click="load">Show stock</button>
@@ -29,18 +29,71 @@
       <div v-else-if="!data" class="card">
         <div class="empty-state">
           <div class="empty-state__title">Choose a project</div>
-          <div class="empty-state__sub">You will see every batch bought under it, who has used it, and what is still free to reserve.</div>
+          <div class="empty-state__sub">You will see the stock received under it and what is still free to reserve, and for a production project, the stock reserved for it.</div>
         </div>
       </div>
 
-      <div v-else-if="!data.rows.length" class="card">
+      <div v-else-if="!data.rows.length && !data.reserved_for.length" class="card">
         <div class="empty-state">
-          <div class="empty-state__title">No stock received under {{ data.project }}</div>
-          <div class="empty-state__sub">Only stock received through a submitted Purchase Receipt with this project appears here.</div>
+          <div class="empty-state__title">Nothing received under or reserved for {{ data.project }}</div>
+          <div class="empty-state__sub">Stock shows here once it is received through a submitted Purchase Receipt with this project, or reserved for it from another project.</div>
         </div>
       </div>
 
       <template v-else>
+        <section v-if="data.reserved_for.length" class="section">
+          <h2 class="section__h">Reserved for {{ data.project }}</h2>
+          <div class="stats">
+            <div v-for="s in reservedStats" :key="s.label" class="stat">
+              <div class="stat__v">{{ fmt(s.value) }}</div>
+              <div class="stat__l">{{ s.label }}</div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>From project</th>
+                  <th>Item / batch</th>
+                  <th>Where</th>
+                  <th class="num">Reserved</th>
+                  <th class="num">Issued</th>
+                  <th class="num">Remaining</th>
+                  <th class="num">Still in stores</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="x in data.reserved_for" :key="x.name">
+                  <td>
+                    <button class="link-btn primary" :title="`Show ${x.purchase_project}'s stock`" @click="openProject(x.purchase_project)">{{ x.purchase_project }}</button>
+                    <div class="sub">{{ x.name }}<template v-if="x.sales_order"> · {{ x.sales_order }}</template></div>
+                  </td>
+                  <td>
+                    <div class="item">{{ x.item_name || x.item_code }}</div>
+                    <div class="sub">{{ x.batch_no }}</div>
+                  </td>
+                  <td>
+                    {{ x.warehouse }}
+                    <div v-if="x.roll_no" class="sub">Roll {{ x.roll_no }}</div>
+                  </td>
+                  <td class="num">{{ fmt(x.reserved_qty) }} <span class="uom">{{ x.uom }}</span></td>
+                  <td class="num">{{ fmt(x.issued_qty) }}</td>
+                  <td class="num"><strong>{{ fmt(x.remaining_qty) }}</strong></td>
+                  <td class="num">
+                    <span v-if="x.in_stores_qty + 1e-6 < x.remaining_qty" class="badge badge-warning" title="Less is in stores at this location than is still reserved">{{ fmt(x.in_stores_qty) }}</span>
+                    <span v-else>{{ fmt(x.in_stores_qty) }}</span>
+                  </td>
+                  <td class="act"><button class="link-btn" @click="release(x)">Release</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">Remaining goes down as {{ data.project }}'s work orders issue the batch from that warehouse.</p>
+        </section>
+
+        <section v-if="data.rows.length" class="section">
+        <h2 v-if="data.reserved_for.length" class="section__h">Received under {{ data.project }}</h2>
         <div class="stats">
           <div v-for="s in stats" :key="s.label" class="stat">
             <div class="stat__v">{{ fmt(s.value) }}</div>
@@ -175,6 +228,7 @@
           "In stores" is stock in issuable warehouses; stock already in WIP or at a subcontractor is counted as used.
           Reserved stock cannot be issued to any other project.
         </p>
+        </section>
       </template>
     </main>
 
@@ -239,7 +293,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'
@@ -293,6 +347,26 @@ const stats = computed(() => {
     { label: 'Free to reserve', value: t.free_qty },
   ] : []
 })
+
+const reservedStats = computed(() => {
+  const t = data.value?.reserved_totals
+  return t ? [
+    { label: 'Reserved', value: t.reserved_qty },
+    { label: 'Issued', value: t.issued_qty },
+    { label: 'Remaining', value: t.remaining_qty },
+    { label: 'Still in stores', value: t.in_stores_qty },
+  ] : []
+})
+
+// A different (or cleared) project must never leave the previous project's figures on screen.
+watch(project, (v) => {
+  if (data.value && v !== data.value.project) data.value = null
+})
+
+function openProject(name) {
+  project.value = name
+  load()
+}
 
 async function load() {
   if (!project.value) return
@@ -425,6 +499,8 @@ onMounted(() => {
 .act { text-align: right; white-space: nowrap; }
 .sm { padding: 5px 12px; font-size: 13px; }
 .muted { color: var(--slate-500); font-size: 13px; }
+.section + .section { margin-top: 32px; }
+.section__h { font-size: 16px; font-weight: 650; margin-bottom: 12px; }
 .note { margin-top: 12px; font-size: 13px; color: var(--slate-500); max-width: 80ch; }
 
 .detail td { background: var(--slate-50); }

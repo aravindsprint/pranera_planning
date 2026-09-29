@@ -801,6 +801,12 @@ def validate_stock_entry(doc, method=None):
         raise
     except Exception:
         frappe.log_error(title="Project stock reservation check failed (entry allowed through)")
+        frappe.msgprint(
+            _("The stock reservation check could not run, so this entry was not checked against "
+              "reservations. Please report it — details are in the Error Log "
+              "(\"Project stock reservation check failed\")."),
+            title=_("Reservation check skipped"), indicator="orange",
+        )
 
 
 def _row_batches(row):
@@ -847,7 +853,7 @@ def _check(doc):
     if not requested:
         return
 
-    state = get_reservation_state({b for b, _, _ in requested})
+    state = get_reservation_state({key[0] for key in requested})
     problems = []
 
     for (batch, wh, project), qty in requested.items():
@@ -881,7 +887,7 @@ def _check(doc):
         if not on_roll and not foreign:
             continue
         loc = st["locations"].get(wh, {"available": 0.0, "rolls": {}})
-        allowed, *_ = allowed_issue_qty(loc["available"], res, project, loc["rolls"], roll, owner=owners.get(batch))
+        allowed = allowed_issue_qty(loc["available"], res, project, loc["rolls"], roll, owner=owners.get(batch))[0]
         if qty <= allowed + EPS:
             continue
         if foreign and not any(same_project(r["production_project"], project) for r in on_roll):
@@ -1035,7 +1041,7 @@ def _check_reserved_first(doc):
             })
 
     problems = []
-    for (_, item), g in groups.items():
+    for (_project_key, item), g in groups.items():
         if not g["lines"]:
             continue
         result = reserved_first(g["reservations"], g["lines"])

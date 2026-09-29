@@ -34,6 +34,12 @@ doc_events = {
         "on_submit": "pranera_planning.reservation.update_fulfilment",
         "on_cancel": "pranera_planning.reservation.update_fulfilment",
     },
+    "Work Order": {
+        "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
+    },
+    "Subcontracting Order": {
+        "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
+    },
 }
 
 # Project.project_type (Link -> Project Type) is a STANDARD field, already on the form —

@@ -10,8 +10,10 @@ see roll_item_groups(). Roll numbers are read from Stock Entry Detail's roll fie
 Definitions
 -----------
 available   qty of a batch sitting in issuable warehouses, i.e. everything except
-            WIP / SUB (subcontractor) / Direct Delivery warehouses. Batch.batch_qty is
-            NOT used: it counts stock in every warehouse, including WIP.
+            WIP and subcontractor warehouses — recognised by how Work Orders and
+            Subcontracting Orders use them (see non_pool_warehouses), plus names starting
+            WIP / SUB / Direct Delivery. Batch.batch_qty is NOT used: it counts stock in
+            every warehouse, including WIP.
 issue       a Stock Entry source line that takes a batch out of that pool:
             Material Transfer for Manufacture, Manufacture (straight from stores) and
             Send to Subcontractor. Its project is the Work Order's project; for Send to
@@ -49,12 +51,15 @@ project_stock_reservation_stages                       [[item code prefix, stage
                                                        page's produced section, default
                                                        [["GKF","Greige"],["DKF","Dyed"],["SKF","Finished"]]
 project_stock_reservation_excluded_warehouse_prefixes  list, default ["WIP", "SUB", "Direct Delivery"]
+project_stock_reservation_excluded_warehouses          list of extra warehouses whose stock is committed
+project_stock_reservation_pool_warehouses              list of warehouses to always treat as stores
 project_stock_reservation_roll_item_groups             list, default ["FABRIC", "COLLAR", "CUFF"]
                                                        (item group trees reserved by roll; missing
                                                        groups are ignored)
 project_stock_reservation_roll_field                   Stock Entry Detail field holding the roll no.,
                                                        default "custom_roll_no"
 """
+import re
 from collections import defaultdict
 
 import frappe
@@ -173,9 +178,102 @@ def is_roll_item(item_code):
     return item_code in roll_tracked_items([item_code])
 
 
+WAREHOUSE_CACHE_KEY = "pranera_planning:reservation:non_pool_warehouses"
+PREFIX_LABELS = {"WIP": "In WIP", "SUB": "At subcontractor"}
+
+
+def non_pool_warehouses():
+    """{warehouse: "In WIP" | "At subcontractor" | "Excluded"} — warehouses whose stock is
+    already committed to production, so it is never free, reservable or "in stores".
+
+    Found from how warehouses are used, not their names (on erp.pranera.in most WIP
+    warehouses — "DYE/UNDER DYEING (WIP)", the knitting machines "SJ05-FUKUHARA ...",
+    "SM01-SUEDING SECTION" — don't start with "WIP"):
+      In WIP            a warehouse Work Orders use as WIP (where it differs from that
+                        order's source and target) more often than they draw from or
+                        deliver into it, or one used as WIP whose name says WIP / Work In
+                        Progress; plus Manufacturing Settings' default WIP warehouse
+      At subcontractor  a Subcontracting Order's (or subcontracted Purchase Order's)
+                        supplier warehouse
+      Excluded          listed in site config project_stock_reservation_excluded_warehouses
+    Site config project_stock_reservation_pool_warehouses forces warehouses back in.
+    The name prefixes in excluded_prefixes() apply on top of this.
+
+    Cached for an hour; cleared when a Work Order or Subcontracting Order is submitted.
+    """
+    cache = frappe.cache()
+    found = cache.get_value(WAREHOUSE_CACHE_KEY)
+    if found is not None:
+        return found
+
+    def counts(q):
+        return {w: n for w, n in frappe.db.sql(q) if w}
+
+    as_wip = counts("""SELECT wip_warehouse, COUNT(*) FROM `tabWork Order`
+                       WHERE docstatus = 1 AND wip_warehouse <> IFNULL(source_warehouse, '')
+                         AND wip_warehouse <> IFNULL(fg_warehouse, '')
+                       GROUP BY wip_warehouse""")
+    as_feed = defaultdict(int)
+    for q in (
+        """SELECT source_warehouse, COUNT(*) FROM `tabWork Order`
+           WHERE docstatus = 1 AND source_warehouse <> IFNULL(wip_warehouse, '') GROUP BY source_warehouse""",
+        """SELECT fg_warehouse, COUNT(*) FROM `tabWork Order`
+           WHERE docstatus = 1 AND fg_warehouse <> IFNULL(wip_warehouse, '') GROUP BY fg_warehouse""",
+        """SELECT woi.source_warehouse, COUNT(DISTINCT woi.parent) FROM `tabWork Order Item` woi
+           JOIN `tabWork Order` wo ON wo.name = woi.parent AND wo.docstatus = 1
+           WHERE woi.source_warehouse <> IFNULL(wo.wip_warehouse, '') GROUP BY woi.source_warehouse""",
+    ):
+        for w, n in counts(q).items():
+            as_feed[w] += n
+
+    # Mostly used as WIP (a few old orders drawing from it don't make it a store:
+    # "DYE/UNDER DYEING (WIP)" 4566 vs 5), or named as one ("Work In Progress - PSS").
+    wip = {w for w, n in as_wip.items() if n > as_feed.get(w, 0) or _looks_like_wip(w)}
+    default_wip = frappe.db.get_single_value("Manufacturing Settings", "default_wip_warehouse")
+    if default_wip:
+        wip.add(default_wip)
+    sql = lambda q: {w for w in frappe.db.sql_list(q) if w}
+    subcontractor = (
+        sql("SELECT DISTINCT supplier_warehouse FROM `tabSubcontracting Order` WHERE docstatus = 1")
+        | sql("SELECT DISTINCT supplier_warehouse FROM `tabPurchase Order` WHERE docstatus = 1 AND is_subcontracted = 1")
+    )
+
+    found = {w: "In WIP" for w in wip}
+    found.update({w: "At subcontractor" for w in subcontractor})
+    found.update({w: "Excluded" for w in frappe.conf.get("project_stock_reservation_excluded_warehouses") or []})
+    for w in frappe.conf.get("project_stock_reservation_pool_warehouses") or []:
+        found.pop(w, None)
+
+    cache.set_value(WAREHOUSE_CACHE_KEY, found, expires_in_sec=3600)
+    return found
+
+
+def _looks_like_wip(warehouse):
+    return bool(re.search(r"\bWIP\b|WORK IN PROGRESS", warehouse or "", re.I))
+
+
+def clear_warehouse_cache(doc=None, method=None):
+    """doc_events hook: a newly submitted Work Order / Subcontracting Order may name a new
+    WIP or supplier warehouse."""
+    frappe.cache().delete_value(WAREHOUSE_CACHE_KEY)
+
+
+def warehouse_place(warehouse):
+    """Where stock in `warehouse` is: None if issuable ("in stores"), else a label."""
+    if not warehouse:
+        return None
+    label = non_pool_warehouses().get(warehouse)
+    if label:
+        return label
+    w = warehouse.lower()
+    for p in excluded_prefixes():
+        if w.startswith(p.lower()):
+            return PREFIX_LABELS.get(p, p)
+    return None
+
+
 def is_pool_warehouse(warehouse):
-    w = (warehouse or "").lower()
-    return not any(w.startswith(p.lower()) for p in excluded_prefixes())
+    return warehouse_place(warehouse) is None
 
 
 def _pool_clause(column):
@@ -185,6 +283,10 @@ def _pool_clause(column):
         key = f"wh_prefix_{i}"
         parts.append(f"{column} NOT LIKE %({key})s")
         values[key] = prefix.replace("%", r"\%").replace("_", r"\_") + "%"
+    committed = tuple(non_pool_warehouses())
+    if committed:
+        parts.append(f"{column} NOT IN %(wh_committed)s")
+        values["wh_committed"] = committed
     return " AND ".join(parts) or "1=1", values
 
 
@@ -340,31 +442,25 @@ def batch_source_project(batch_no):
 
 def get_elsewhere_qty(batch_nos):
     """{batch: {label: qty}} held outside issuable warehouses — "In WIP", "At subcontractor",
-    or the excluded prefix itself."""
+    "Excluded" or an excluded name prefix (see warehouse_place)."""
     if not batch_nos:
         return {}
-    labels = {"WIP": "In WIP", "SUB": "At subcontractor"}
-    values = {"batches": tuple(batch_nos)}
-    cases = []
-    for i, p in enumerate(excluded_prefixes()):
-        values[f"like{i}"] = p.replace("%", r"\%").replace("_", r"\_") + "%"
-        values[f"label{i}"] = labels.get(p, p)
-        cases.append(f"WHEN sbe.warehouse LIKE %(like{i})s THEN %(label{i})s")
-    if not cases:
-        return {}
+    clause, values = _pool_clause("sbe.warehouse")
+    values["batches"] = tuple(batch_nos)
     rows = frappe.db.sql(
-        f"""SELECT sbe.batch_no, CASE {' '.join(cases)} END AS place, SUM(sbe.qty) AS qty
+        f"""SELECT sbe.batch_no, sbe.warehouse, SUM(sbe.qty) AS qty
             FROM `tabSerial and Batch Entry` sbe
             JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
             WHERE sbb.docstatus = 1 AND sbb.is_cancelled = 0 AND sbe.batch_no IN %(batches)s
-            GROUP BY sbe.batch_no, place HAVING place IS NOT NULL""",
+              AND NOT ({clause})
+            GROUP BY sbe.batch_no, sbe.warehouse""",
         values, as_dict=True,
     )
-    out = defaultdict(dict)
+    out = defaultdict(lambda: defaultdict(float))
     for r in rows:
         if flt(r.qty) > EPS:
-            out[r.batch_no][r.place] = round(flt(r.qty), 3)
-    return out
+            out[r.batch_no][warehouse_place(r.warehouse) or "Elsewhere"] += flt(r.qty)
+    return {b: {k: round(v, 3) for k, v in places.items()} for b, places in out.items()}
 
 
 def get_available_qty(batch_nos):

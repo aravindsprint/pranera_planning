@@ -106,6 +106,16 @@ Site config (`site_config.json`), all optional:
 | `project_stock_reservation_roll_item_groups` | `["FABRIC","COLLAR","CUFF"]` | item group trees reserved by roll (missing groups ignored) |
 | `project_stock_reservation_roll_field` | `"custom_roll_no"` | Stock Entry Detail field holding the roll no. |
 
+**Which warehouses count as stores.** Stock in WIP and subcontractor warehouses is already
+committed to an order: it is never "in stores", free, or reservable. These are recognised by
+use, not by name — a warehouse Work Orders use as WIP more often than they draw from it (or one
+used as WIP whose name says WIP / Work In Progress), Manufacturing Settings' default WIP
+warehouse, and every Subcontracting Order supplier warehouse — plus names starting WIP / SUB /
+Direct Delivery. Adjust with site config `project_stock_reservation_excluded_warehouses` /
+`project_stock_reservation_pool_warehouses` (lists). The list is cached for an hour and cleared
+when a Work Order or Subcontracting Order is submitted. The `release_reservations_outside_stores`
+patch releases Active reservations that sit in such a warehouse.
+
 **Fulfilled.** A reservation becomes `Fulfilled` automatically when everything reserved has
 been issued (checked on every Stock Entry submit of the enforced types), and goes back to
 `Active` if cancelling an entry reopens it. The `mark_fulfilled_reservations` patch catches up

@@ -4,3 +4,4 @@
 [post_model_sync]
 pranera_planning.patches.set_reservation_warehouse
 pranera_planning.patches.mark_fulfilled_reservations
+pranera_planning.patches.release_reservations_outside_stores

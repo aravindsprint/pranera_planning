@@ -1,6 +1,8 @@
 import unittest
 
-from pranera_planning.reservation_math import allowed_issue_qty, remaining_qty, same_project
+from pranera_planning.reservation_math import (
+    allowed_issue_qty, clean_roll, location_room, location_summary, remaining_qty, same_project,
+)
 
 
 class TestReservationMath(unittest.TestCase):
@@ -33,6 +35,52 @@ class TestReservationMath(unittest.TestCase):
         res = [{"production_project": "B", "reserved_qty": 60, "issued_qty": 0}]
         allowed, free, *_ = allowed_issue_qty(20, res, "A")
         self.assertEqual((allowed, free), (0, 0))
+
+
+    # ── warehouse + batch + roll ─────────────────────────────────────────────
+    def test_junk_roll_numbers_are_blank(self):
+        self.assertEqual(clean_roll(" 204353 "), "204353")
+        self.assertEqual(clean_roll("0.000000000"), "")
+        self.assertEqual(clean_roll(None), "")
+
+    def test_yarn_room_is_warehouse_level(self):
+        res = [{"roll_no": "", "reserved_qty": 30, "issued_qty": 0}]
+        self.assertEqual(location_room(100, {}, res), 70)
+
+    def test_numbered_roll_room_is_that_roll_only(self):
+        rolls = {"R1": 25, "R2": 24}
+        res = [{"roll_no": "R1", "reserved_qty": 25, "issued_qty": 0}]
+        self.assertEqual(location_room(100, rolls, res, "R1"), 0)
+        self.assertEqual(location_room(100, rolls, res, "R2"), 24)
+
+    def test_unnumbered_stock_backs_rolls_the_ledger_has_not_seen(self):
+        # 100 in the warehouse, 49 of it on numbered rolls -> 51 unnumbered.
+        rolls = {"R1": 25, "R2": 24, "OLD": -20}          # OLD left labelled, came in unlabelled
+        s = location_summary(100, rolls, [{"roll_no": "NEW", "reserved_qty": 30, "issued_qty": 0}])
+        self.assertEqual(s["unnumbered"], {"qty": 51, "reserved": 30, "free": 21})
+        self.assertNotIn("OLD", s["rolls"])
+        self.assertEqual(location_room(100, rolls, [], "NEW"), 51)
+
+    def test_roll_room_never_exceeds_warehouse_room(self):
+        rolls = {"R1": 25}
+        res = [{"roll_no": "X", "reserved_qty": 90, "issued_qty": 0}]
+        self.assertEqual(location_room(100, rolls, res, "R1"), 10)
+
+    def test_roll_reserved_for_another_project_is_blocked(self):
+        rolls = {"R1": 25}
+        res = [{"production_project": "B", "roll_no": "R1", "reserved_qty": 25, "issued_qty": 0}]
+        allowed, free, *_ = allowed_issue_qty(100, res, "A", rolls, "R1")
+        self.assertEqual((allowed, free), (0, 75))
+        allowed, *_ = allowed_issue_qty(100, res, "A", rolls, "R2")     # another roll is fine
+        self.assertEqual(allowed, 75)
+        allowed, *_ = allowed_issue_qty(100, res, "B", rolls, "R1")     # owner: not roll-capped
+        self.assertEqual(allowed, 100)
+
+    def test_partly_reserved_roll_releases_only_the_rest(self):
+        rolls = {"R1": 25}
+        res = [{"production_project": "B", "roll_no": "R1", "reserved_qty": 10, "issued_qty": 0}]
+        allowed, *_ = allowed_issue_qty(100, res, "A", rolls, "R1")
+        self.assertEqual(allowed, 15)
 
 
 if __name__ == "__main__":

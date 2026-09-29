@@ -1,40 +1,47 @@
+import json
 from collections import defaultdict
 
 import frappe
 from frappe.utils import flt
 
 from pranera_planning.reservation import (
-    get_available_qty, get_issue_lines, get_reservation_state,
+    get_issue_lines, get_reservation_state, reservations_at, roll_tracked_items,
 )
-from pranera_planning.reservation_math import same_project
+from pranera_planning.reservation_math import EPS, location_summary, same_project
+
+PROJECT_TYPES = ("Purchase", "Production")
 
 
 @frappe.whitelist()
-def search_purchase_projects(txt=""):
-    """Projects that have actually received batch-tracked stock — for the "Purchase
-    project" picker. A plain Project search would offer every project in the system,
-    including ones that never bought anything and would just land on the empty state.
+def search_purchase_projects(txt="", project_types=None):
+    """Projects that have actually received batch-tracked stock — for the page's "Project"
+    picker. A plain Project search would offer every project in the system, including ones
+    that never received anything and would just land on the empty state.
 
-    Matches on the project ID or its project_name, same as LinkField's default search,
-    but scoped to `EXISTS (a submitted Purchase Receipt line, with a batch, under this
-    project)` instead of every Project row. Same permission gate as the page's other
-    endpoint, since this exists purely to feed it.
+    Matches on the project ID or its project_name, scoped to `EXISTS (a submitted Purchase
+    Receipt line, with a batch, under this project)`.
 
-    Also excludes a project explicitly typed Production (Project's standard project_type
-    field, not a custom one) — an
-    unclassified project (blank) is still offered, same "allow until classified, block
-    once wrong" rule the doctype's own validate() applies.
+    `project_types` is the page's Purchase / Production checkboxes (a list, or its JSON).
+    Empty — nothing ticked, or both ticked — means no type filter at all, unclassified
+    (blank) projects included; otherwise only projects typed exactly that way.
 
-    Returns `{name, title}` rows — the shape LinkField's `search-fn` prop expects, title
-    being what's shown alongside the ID, not what gets picked or emitted.
+    Returns `{name, title}` rows — the shape LinkField's `search-fn` prop expects.
     """
     frappe.has_permission("Project Stock Reservation", "read", throw=True)
-    like = f"%{txt.strip()}%"
+    if isinstance(project_types, str):
+        project_types = json.loads(project_types or "[]")
+    types = [t for t in (project_types or []) if t in PROJECT_TYPES]
+    type_filter = ""
+    params = {"like": f"%{(txt or '').strip()}%"}
+    if types and set(types) != set(PROJECT_TYPES):
+        type_filter = "AND p.project_type IN %(types)s"
+        params["types"] = tuple(types)
+
     rows = frappe.db.sql(
-        """SELECT DISTINCT p.name, p.project_name
+        f"""SELECT DISTINCT p.name, p.project_name, p.modified
            FROM `tabProject` p
            WHERE (p.name LIKE %(like)s OR IFNULL(p.project_name, '') LIKE %(like)s)
-             AND IFNULL(p.project_type, '') != 'Production'
+             {type_filter}
              AND EXISTS (
                SELECT 1 FROM `tabPurchase Receipt Item` pri
                JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
@@ -42,7 +49,7 @@ def search_purchase_projects(txt=""):
              )
            ORDER BY p.modified DESC
            LIMIT 15""",
-        {"like": like}, as_dict=True,
+        params, as_dict=True,
     )
     return [{"name": r.name, "title": r.project_name} for r in rows]
 
@@ -54,6 +61,11 @@ def get_purchase_project_stock(project, item_group=None):
     One row per batch bought under `project`, with what was received, what is still
     issuable, what has been issued to which projects (reserved or not), and the active
     reservations with their remaining balance.
+
+    Each row also carries `locations`: one entry per stores warehouse holding the batch,
+    with what's reserved and free there. For roll items (fabric, collar, cuff —
+    `roll_tracked`), each location lists its numbered rolls and an "unnumbered" remainder,
+    since rolls are reserved individually.
 
     `item_group` is optional and restricts the result to that Item Group's tree (e.g.
     "YARN", "FABRIC") — pass nothing to see every batch-tracked item bought under the
@@ -89,6 +101,7 @@ def get_purchase_project_stock(project, item_group=None):
 
     lines = get_issue_lines(batch_nos)
     state = get_reservation_state(batch_nos, issue_lines=lines)
+    roll_items = roll_tracked_items([b.item_code for b in batches])
 
     issued_by = defaultdict(lambda: defaultdict(float))     # batch -> project -> qty
     for l in lines:
@@ -100,6 +113,7 @@ def get_purchase_project_stock(project, item_group=None):
         reserved_remaining = sum(r["remaining_qty"] for r in st["reservations"])
         used = issued_by[b.batch_no]
         used_own = sum(q for p, q in used.items() if same_project(p, project))
+        locations = _locations(st, b.item_code in roll_items)
         rows.append({
             "item_code": b.item_code,
             "item_name": b.item_name,
@@ -113,10 +127,41 @@ def get_purchase_project_stock(project, item_group=None):
                 key=lambda x: -x["qty"],
             ),
             "reserved_remaining": reserved_remaining,
-            "free_qty": max(0.0, st["available"] - reserved_remaining),
+            "free_qty": round(sum(l["free_qty"] for l in locations), 3),
+            "roll_tracked": b.item_code in roll_items,
+            "locations": locations,
             "reservations": st["reservations"],
         })
     return {"project": project, "rows": rows, "totals": _totals(rows)}
+
+
+def _locations(st, roll_tracked):
+    """Per-warehouse stock for one batch, from get_reservation_state()'s entry."""
+    warehouses = set(st["locations"]) | {r["warehouse"] for r in st["reservations"] if r["warehouse"]}
+    out = []
+    for wh in sorted(warehouses):
+        loc = st["locations"].get(wh, {"available": 0.0, "rolls": {}})
+        res = reservations_at(st, wh)
+        if loc["available"] <= EPS and not res:
+            continue
+        s = location_summary(loc["available"], loc["rolls"] if roll_tracked else {}, res)
+        entry = {
+            "warehouse": wh,
+            "available_qty": round(loc["available"], 3),
+            "reserved_remaining": round(s["reserved"], 3),
+            "free_qty": round(s["free"], 3),
+        }
+        if roll_tracked:
+            entry["rolls"] = [
+                {"roll_no": roll, "qty": round(v["qty"], 3), "reserved_remaining": round(v["reserved"], 3),
+                 "free_qty": round(v["free"], 3)}
+                for roll, v in s["rolls"].items()
+            ]
+            u = s["unnumbered"]
+            entry["unnumbered"] = {"qty": round(u["qty"], 3), "reserved_remaining": round(u["reserved"], 3),
+                                   "free_qty": round(u["free"], 3)}
+        out.append(entry)
+    return out
 
 
 def _totals(rows):

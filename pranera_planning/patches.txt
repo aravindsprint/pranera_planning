@@ -2,3 +2,4 @@
 # pranera_planning.patches.<module>.execute
 
 [post_model_sync]
+pranera_planning.patches.set_reservation_warehouse

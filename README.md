@@ -61,10 +61,21 @@ local bench with developer mode on, then commit the generated files.
 ## Stock reservation
 
 Page: `/planning-app/project-stock-reservation` (menu: Planning -> Stock Reservation). Pick a
-purchase project, see each batch bought under it, and reserve quantity for another project's
-production. Works for any batch-tracked item — yarn, fabric at any stage, chemicals, finished
-goods. A reservation is a `Project Stock Reservation` document (one active row per batch per
-production project per Sales Order; `sales_order` is blank for pooled reservations).
+project (the Purchase / Production checkboxes filter the picker by Project Type; both ticked
+shows every type, unclassified included), see each batch received under it, and reserve
+quantity for a production project. A reservation is a `Project Stock Reservation` document
+held at one stock location:
+
+| Item | Reserved by |
+|---|---|
+| Yarn and other batch items | warehouse + batch |
+| Fabric, collar, cuff (anything under the `FABRIC` item group — collars and cuffs live there) | warehouse + batch + roll |
+
+Roll numbers come from Stock Entry Detail's `custom_roll_no`. Rolls often enter a warehouse
+without a number and only get one when they leave, so each warehouse shows its numbered rolls
+plus the stock with no roll no. on record; reserving a roll number the ledger hasn't seen there
+is taken out of that remainder. One active row per warehouse + batch + roll per production
+project per Sales Order (`sales_order` is blank for pooled reservations).
 
 If you ask for more than is available, the reservation is **capped** to what's available rather
 than refused, and `requested_qty` keeps the original ask visible. Only a batch with nothing left
@@ -73,7 +84,8 @@ been issued against it.
 
 The rule is enforced on Stock Entry `validate` (`reservation.py`) for Material Transfer for
 Manufacture, Manufacture and Send to Subcontractor: an issue of qty `q` to project `P` is
-refused unless `q <= free + still-reserved-for-P`. This covers Work Order, Job Card and
+refused unless `q <= free + still-reserved-for-P`, counted per source warehouse; and a roll
+reserved for another project can't be issued to P. This covers Work Order, Job Card and
 Subcontracting Order flows alike, since none of them moves stock itself — each triggers one of
 these Stock Entries. Batches with no active reservation are never touched, and a bug in the
 check fails open (logged) instead of blocking the floor.
@@ -91,8 +103,12 @@ Site config (`site_config.json`), all optional:
 |---|---|---|
 | `project_stock_reservation_enforcement` | `1` | `0` turns the Stock Entry check off, no redeploy |
 | `project_stock_reservation_excluded_warehouse_prefixes` | `["WIP","SUB","Direct Delivery"]` | warehouses that do not count as issuable stock |
+| `project_stock_reservation_roll_item_groups` | `["FABRIC","COLLAR","CUFF"]` | item group trees reserved by roll (missing groups ignored) |
+| `project_stock_reservation_roll_field` | `"custom_roll_no"` | Stock Entry Detail field holding the roll no. |
 
-Known limits: stock returned from WIP to stores does not restore a reservation; plain
+Known limits: a reservation stays at its warehouse — moving the stock with a plain Material
+Transfer leaves the reservation behind (the new warehouse's stock is unreserved); an issue line
+with no roll no. counts against the warehouse, not against a roll reservation; stock returned from WIP to stores does not restore a reservation; plain
 Material Transfer / Material Issue are not checked; a Subcontracting Order whose items span
 several projects cannot be attributed to one project, so it is not checked.
 

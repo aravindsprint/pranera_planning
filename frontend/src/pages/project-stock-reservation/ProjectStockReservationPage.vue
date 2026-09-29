@@ -5,15 +5,22 @@
     <main class="page-content">
       <div class="page-toolbar">
         <div class="picker">
-          <label class="form-label" for="pp">Purchase project</label>
-          <LinkField
-            id="pp" v-model="project" doctype="Project" placeholder="e.g. 26PTIN1710"
-            :search-fn="searchPurchaseProjects" empty-label="No project with received stock found"
-            @change="load"
-          />
-          <p class="hint">Only projects with received stock, and not typed Production.</p>
+          <label class="form-label" for="pp">Project</label>
+          <div class="picker__row">
+            <LinkField
+              id="pp" v-model="project" doctype="Project" placeholder="e.g. 26PTIN1710"
+              :search-fn="searchProjects" empty-label="No project with received stock found"
+              @change="load"
+            />
+            <button class="btn btn-primary" :disabled="!project || loading" @click="load">Show stock</button>
+          </div>
+          <div class="types" role="group" aria-label="Project type">
+            <label v-for="t in PROJECT_TYPES" :key="t" class="check">
+              <input v-model="types[t]" type="checkbox" /> {{ t }}
+            </label>
+          </div>
+          <p class="hint">{{ typeHint }}</p>
         </div>
-        <button class="btn btn-primary" :disabled="!project || loading" @click="load">Show stock</button>
       </div>
 
       <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
@@ -21,7 +28,7 @@
 
       <div v-else-if="!data" class="card">
         <div class="empty-state">
-          <div class="empty-state__title">Choose a purchase project</div>
+          <div class="empty-state__title">Choose a project</div>
           <div class="empty-state__sub">You will see every batch bought under it, who has used it, and what is still free to reserve.</div>
         </div>
       </div>
@@ -66,7 +73,12 @@
                   </td>
                   <td>
                     <div class="item">{{ r.item_name || r.item_code }}</div>
-                    <div class="sub">{{ r.batch_no }}</div>
+                    <div class="sub">
+                      {{ r.batch_no }}
+                      <span class="level" :title="r.roll_tracked ? 'Reserved by warehouse, batch and roll' : 'Reserved by warehouse and batch'">
+                        {{ r.roll_tracked ? 'By roll' : 'By batch' }}
+                      </span>
+                    </div>
                   </td>
                   <td class="num">{{ fmt(r.received_qty) }} <span class="uom">{{ r.uom }}</span></td>
                   <td class="num">{{ fmt(r.used_own_qty) }}</td>
@@ -80,15 +92,60 @@
                 <tr v-if="open[r.batch_no]" class="detail">
                   <td></td>
                   <td colspan="8">
+                    <div class="detail__h">Stock by warehouse{{ r.roll_tracked ? ' and roll' : '' }}</div>
+                    <p v-if="!r.locations.length" class="muted">None of this batch is in a stores warehouse.</p>
+                    <table v-else class="mini locs">
+                      <thead>
+                        <tr>
+                          <th>{{ r.roll_tracked ? 'Warehouse / roll' : 'Warehouse' }}</th>
+                          <th class="num">In stores</th><th class="num">Reserved</th><th class="num">Free</th><th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <template v-for="l in r.locations" :key="l.warehouse">
+                          <tr :class="{ wh: r.roll_tracked }">
+                            <td>{{ l.warehouse }}</td>
+                            <td class="num">{{ fmt(l.available_qty) }}</td>
+                            <td class="num">{{ fmt(l.reserved_remaining) }}</td>
+                            <td class="num">{{ fmt(l.free_qty) }}</td>
+                            <td class="act">
+                              <button v-if="!r.roll_tracked" class="link-btn primary" :disabled="l.free_qty <= 0" @click="openDialog(r, { warehouse: l.warehouse })">Reserve</button>
+                            </td>
+                          </tr>
+                          <template v-if="r.roll_tracked">
+                            <tr v-for="x in l.rolls" :key="l.warehouse + x.roll_no" class="roll">
+                              <td>Roll {{ x.roll_no }}</td>
+                              <td class="num">{{ fmt(x.qty) }}</td>
+                              <td class="num">{{ fmt(x.reserved_remaining) }}</td>
+                              <td class="num">{{ fmt(x.free_qty) }}</td>
+                              <td class="act">
+                                <button class="link-btn primary" :disabled="x.free_qty <= 0" @click="openDialog(r, { warehouse: l.warehouse, roll_no: x.roll_no })">Reserve</button>
+                              </td>
+                            </tr>
+                            <tr v-if="l.unnumbered.qty > 0 || l.unnumbered.reserved_remaining > 0" class="roll">
+                              <td>Rolls with no roll no. on record</td>
+                              <td class="num">{{ fmt(l.unnumbered.qty) }}</td>
+                              <td class="num">{{ fmt(l.unnumbered.reserved_remaining) }}</td>
+                              <td class="num">{{ fmt(l.unnumbered.free_qty) }}</td>
+                              <td class="act">
+                                <button class="link-btn primary" :disabled="l.unnumbered.free_qty <= 0" @click="openDialog(r, { warehouse: l.warehouse, roll_no: '' })">Reserve</button>
+                              </td>
+                            </tr>
+                          </template>
+                        </template>
+                      </tbody>
+                    </table>
+
                     <div class="detail__grid">
                       <div>
                         <div class="detail__h">Reservations</div>
                         <p v-if="!r.reservations.length" class="muted">Nothing reserved on this batch.</p>
                         <table v-else class="mini">
-                          <thead><tr><th>Reserved for</th><th class="num">Reserved</th><th class="num">Issued</th><th class="num">Remaining</th><th></th></tr></thead>
+                          <thead><tr><th>Reserved for</th><th>Where</th><th class="num">Reserved</th><th class="num">Issued</th><th class="num">Remaining</th><th></th></tr></thead>
                           <tbody>
                             <tr v-for="x in r.reservations" :key="x.name">
                               <td>{{ x.production_project }} <span class="sub">{{ x.name }}</span></td>
+                              <td>{{ x.warehouse || '—' }}<span v-if="x.roll_no" class="sub"> · roll {{ x.roll_no }}</span></td>
                               <td class="num">{{ fmt(x.reserved_qty) }}</td>
                               <td class="num">{{ fmt(x.issued_qty) }}</td>
                               <td class="num">{{ fmt(x.remaining_qty) }}</td>
@@ -125,7 +182,30 @@
       <form class="dialog" @submit.prevent="save">
         <h2>Reserve stock</h2>
         <p class="sub">{{ dlg.row.item_name || dlg.row.item_code }} · {{ dlg.row.batch_no }}</p>
-        <p class="sub">Free to reserve: <strong>{{ fmt(dlg.row.free_qty) }} {{ dlg.row.uom }}</strong></p>
+        <p class="sub">
+          Reserved by {{ dlg.row.roll_tracked ? 'warehouse, batch and roll' : 'warehouse and batch' }}.
+          Free here: <strong>{{ fmt(dlgFree) }} {{ dlg.row.uom }}</strong>
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="wh">Warehouse</label>
+          <select id="wh" v-model="dlg.warehouse" class="form-input" @change="onLocationChange">
+            <option v-for="l in dlgWarehouses" :key="l.warehouse" :value="l.warehouse">
+              {{ l.warehouse }} ({{ fmt(l.free_qty) }} free)
+            </option>
+          </select>
+        </div>
+        <div v-if="dlg.row.roll_tracked" class="form-group">
+          <label class="form-label" for="roll">Roll no.</label>
+          <input
+            id="roll" v-model.trim="dlg.roll_no" class="form-input" list="roll-options" autocomplete="off"
+            placeholder="Pick a roll or type its number" @change="onLocationChange"
+          />
+          <datalist id="roll-options">
+            <option v-for="x in dlgRolls" :key="x.roll_no" :value="x.roll_no">{{ fmt(x.free_qty) }} free</option>
+          </datalist>
+          <p class="hint">{{ rollHint }}</p>
+        </div>
 
         <div class="form-group">
           <label class="form-label" for="prod">Reserve for project</label>
@@ -149,7 +229,7 @@
 
         <div class="dialog__foot">
           <button type="button" class="btn btn-outline" @click="closeDialog">Cancel</button>
-          <button type="submit" class="btn btn-primary" :disabled="dlg.saving || !dlg.production_project || !(dlg.qty > 0)">
+          <button type="submit" class="btn btn-primary" :disabled="dlg.saving || !canSave">
             {{ dlg.saving ? 'Reserving…' : 'Reserve' }}
           </button>
         </div>
@@ -165,11 +245,25 @@ import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'
 import { callMessage, createDoc, updateDoc } from '@/api/frappe'
 
-// Only Projects that actually have a purchased batch — plain Project search would include
+// Only Projects that actually have a received batch — plain Project search would include
 // every project in the system, most of which never had anything bought under them and only
 // lead to "No stock received under this project" if picked here.
-async function searchPurchaseProjects(txt) {
-  return await callMessage('pranera_planning.api.reservation.search_purchase_projects', { txt })
+const PROJECT_TYPES = ['Purchase', 'Production']
+const types = reactive({ Purchase: true, Production: true })
+const selectedTypes = computed(() => PROJECT_TYPES.filter((t) => types[t]))
+
+// Both ticked, or neither, means no type filter (unclassified projects included).
+const typeHint = computed(() => {
+  const t = selectedTypes.value
+  if (t.length === 1) return `Projects with received stock, typed ${t[0]}.`
+  return 'Projects with received stock, any type — including ones not yet classified.'
+})
+
+async function searchProjects(txt) {
+  const t = selectedTypes.value
+  return await callMessage('pranera_planning.api.reservation.search_purchase_projects', {
+    txt, project_types: t.length === 1 ? t : [],
+  })
 }
 
 const route = useRoute()
@@ -181,7 +275,9 @@ const loading = ref(false)
 const error = ref('')
 const open = reactive({})
 
-const dlg = reactive({ row: null, production_project: '', qty: 0, remarks: '', saving: false, error: '' })
+const dlg = reactive({
+  row: null, warehouse: '', roll_no: '', production_project: '', qty: 0, remarks: '', saving: false, error: '',
+})
 
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })
 const sum = (list) => list.reduce((a, x) => a + x.qty, 0)
@@ -213,8 +309,51 @@ async function load() {
   }
 }
 
-function openDialog(row) {
-  Object.assign(dlg, { row, production_project: '', qty: row.free_qty, remarks: '', saving: false, error: '' })
+// ── Reserve dialog: warehouse (+ roll) ───────────────────────────────────────
+const dlgWarehouses = computed(() => {
+  const locs = dlg.row?.locations || []
+  return locs.filter((l) => l.free_qty > 0 || l.warehouse === dlg.warehouse)
+})
+const dlgLocation = computed(() => (dlg.row?.locations || []).find((l) => l.warehouse === dlg.warehouse) || null)
+const dlgRolls = computed(() => (dlgLocation.value?.rolls || []).filter((x) => x.free_qty > 0))
+const dlgKnownRoll = computed(() => (dlgLocation.value?.rolls || []).find((x) => x.roll_no === dlg.roll_no) || null)
+
+// What the server will let this reservation hold (it caps anything above this).
+const dlgFree = computed(() => {
+  const l = dlgLocation.value
+  if (!l) return 0
+  if (!dlg.row.roll_tracked) return l.free_qty
+  if (dlgKnownRoll.value) return dlgKnownRoll.value.free_qty
+  return l.unnumbered?.free_qty || 0
+})
+
+const rollHint = computed(() => {
+  const l = dlgLocation.value
+  if (!l) return ''
+  if (!dlg.roll_no) {
+    return dlgRolls.value.length
+      ? `${dlgRolls.value.length} numbered roll(s) free here. A roll not in the list is taken from stock with no roll no. on record.`
+      : 'No numbered rolls on record here — type the roll no. from the roll tag.'
+  }
+  if (dlgKnownRoll.value) return `Roll ${dlg.roll_no}: ${fmt(dlgKnownRoll.value.qty)} in stock, ${fmt(dlgKnownRoll.value.free_qty)} free.`
+  return `Roll ${dlg.roll_no} has no record in this warehouse yet — reserved out of the ${fmt(l.unnumbered?.free_qty)} with no roll no. on record.`
+})
+
+const canSave = computed(() =>
+  !!dlg.production_project && !!dlg.warehouse && dlg.qty > 0 && (!dlg.row?.roll_tracked || !!dlg.roll_no),
+)
+
+function onLocationChange() { dlg.qty = dlgFree.value }
+
+function openDialog(row, at = {}) {
+  const first = row.locations.find((l) => l.free_qty > 0)
+  Object.assign(dlg, {
+    row,
+    warehouse: at.warehouse || first?.warehouse || '',
+    roll_no: at.roll_no || '',
+    production_project: '', remarks: '', saving: false, error: '',
+  })
+  dlg.qty = dlgFree.value
 }
 function closeDialog() { dlg.row = null }
 
@@ -227,6 +366,8 @@ async function save() {
       production_project: dlg.production_project,
       item_code: dlg.row.item_code,
       batch_no: dlg.row.batch_no,
+      warehouse: dlg.warehouse,
+      roll_no: dlg.row.roll_tracked ? dlg.roll_no : '',
       reserved_qty: dlg.qty,
       remarks: dlg.remarks,
     })
@@ -260,7 +401,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.picker { width: 280px; max-width: 100%; }
+.picker { width: 440px; max-width: 100%; }
+.picker__row { display: flex; gap: 12px; align-items: center; }
+.picker__row > :first-child { flex: 1; min-width: 0; }
+.picker__row .btn { white-space: nowrap; }
+.types { display: flex; gap: 16px; margin-top: 8px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--slate-700, #334155); cursor: pointer; }
+.check input { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; }
 .hint { font-size: 12px; color: var(--slate-500); margin-top: 5px; }
 .page-toolbar { align-items: flex-end; }
 
@@ -290,6 +437,13 @@ onMounted(() => {
 .mini .num { text-align: right; }
 .link-btn { background: none; border: none; color: var(--red-600); font-size: 13px; font-weight: 600; }
 .link-btn:hover { text-decoration: underline; }
+.link-btn.primary { color: var(--primary); }
+.link-btn:disabled { color: var(--slate-400); text-decoration: none; cursor: default; }
+
+.level { margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 11px; background: var(--slate-100); color: var(--slate-500); }
+.locs { margin-bottom: 16px; }
+.locs tr.wh td { font-weight: 600; }
+.locs tr.roll td:first-child { padding-left: 18px; color: var(--slate-700, #334155); }
 
 .overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 400; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .dialog { background: #fff; border-radius: var(--radius-lg); padding: 24px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); }

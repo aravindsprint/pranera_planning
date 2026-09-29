@@ -6,7 +6,7 @@
       <div class="page-toolbar">
         <div class="picker">
           <label class="form-label" for="pp">Purchase project</label>
-          <LinkField id="pp" v-model="project" doctype="Project" placeholder="e.g. 26PTIN1710" @change="load" />
+          <LinkField id="pp" v-model="project" doctype="Project" title-field="project_name" placeholder="e.g. 26PTIN1710" @change="load" />
         </div>
         <button class="btn btn-primary" :disabled="!project || loading" @click="load">Show stock</button>
       </div>
@@ -124,7 +124,7 @@
 
         <div class="form-group">
           <label class="form-label" for="prod">Reserve for project</label>
-          <LinkField id="prod" v-model="dlg.production_project" doctype="Project" placeholder="Production project" />
+          <LinkField id="prod" v-model="dlg.production_project" doctype="Project" title-field="project_name" placeholder="Production project" />
         </div>
         <div class="form-group">
           <label class="form-label" for="qty">Quantity ({{ dlg.row.uom }})</label>

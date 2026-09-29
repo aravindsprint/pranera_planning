@@ -64,21 +64,30 @@ class ProjectStockReservation(Document):
         custom field — Purchase and Production are two new Project Type records this app
         ships as a fixture, alongside whatever Project Types already exist on the site.
 
-        An unclassified project (project_type blank on the Project record) is let through
-        with a warning rather than blocked outright, since no existing project has this
-        set until someone goes back and classifies it. A project typed the *wrong* way —
-        including one of the pre-existing types like Internal or External — is a real
-        mistake and is always blocked.
+        The project stock is reserved *for* must be typed Production and Open. That is
+        checked only when a reservation is created: a project completed later must not
+        stop its reservation from being released.
+
+        An unclassified *source* project (project_type blank) is let through with a
+        warning; one typed some other way (Internal, External, ...) is blocked.
         """
         purchase_type = frappe.db.get_value("Project", self.purchase_project, "project_type")
-        production_type = frappe.db.get_value("Project", self.production_project, "project_type")
 
         if purchase_type and purchase_type not in SOURCE_TYPES:
             frappe.throw(_("{0} is typed as {1}, not Purchase or Production — check you have the right project.").format(self.purchase_project, purchase_type))
-        if production_type and production_type != "Production":
-            frappe.throw(_("{0} is typed as {1}, not Production — check you have the right project.").format(self.production_project, production_type))
 
-        unclassified = [p for p, t in ((self.purchase_project, purchase_type), (self.production_project, production_type)) if not t]
+        if self.is_new():
+            production_type, production_status = frappe.db.get_value(
+                "Project", self.production_project, ["project_type", "status"]
+            ) or (None, None)
+            if production_type != "Production":
+                frappe.throw(_("{0} is typed as {1}, not Production — stock can only be reserved for a Production project.").format(
+                    self.production_project, production_type or _("(not set)")))
+            if production_status != "Open":
+                frappe.throw(_("{0} is {1} — stock can only be reserved for an Open project.").format(
+                    self.production_project, production_status))
+
+        unclassified = [self.purchase_project] if not purchase_type else []
         if unclassified:
             frappe.msgprint(_(
                 "Project Type is not set on {0}. Set it on the Project record so a mix-up here gets caught automatically."

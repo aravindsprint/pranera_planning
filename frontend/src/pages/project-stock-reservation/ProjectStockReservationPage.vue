@@ -211,10 +211,10 @@
           <label class="form-label" for="prod">Reserve for project</label>
           <LinkField
             id="prod" v-model="dlg.production_project" doctype="Project" title-field="project_name"
-            :filters="[['Project', 'project_type', 'in', ['Production', '']]]"
-            placeholder="Production project"
+            :filters="[['Project', 'project_type', '=', 'Production'], ['Project', 'status', '=', 'Open']]"
+            placeholder="Production project" empty-label="No open Production project found"
           />
-          <p class="hint">Projects typed Purchase are hidden here — this list is Production projects (or not yet classified).</p>
+          <p class="hint">Open projects typed Production only.</p>
         </div>
         <div class="form-group">
           <label class="form-label" for="qty">Quantity ({{ dlg.row.uom }})</label>

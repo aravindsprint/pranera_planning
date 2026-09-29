@@ -86,7 +86,9 @@ def allowed_issue_qty(available, reservations, project, roll_balances=None, roll
                   [{"production_project", "reserved_qty", "issued_qty", "roll_no"?}]
     project       the production project that wants to issue
     roll_no       the roll being issued, if the line names one. A roll reserved for another
-                  project can't be issued to this one beyond what's left on it unreserved.
+                  project can't be issued to this one beyond what's left on it unreserved;
+                  a roll of a batch owned by another project only as far as it is reserved
+                  for this one.
     owner         the project the batch was produced for, if any. Unreserved stock of an
                   owned batch is the owner's: any other project may take only what is
                   reserved for it.
@@ -109,11 +111,43 @@ def allowed_issue_qty(available, reservations, project, roll_balances=None, roll
 
     if roll_no:
         on_roll = [r for r in reservations if r.get("roll_no") == roll_no]
+        mine = sum(_rem(r) for r in on_roll if same_project(r["production_project"], project))
         others = sum(_rem(r) for r in on_roll if not same_project(r["production_project"], project))
-        if others > EPS:
-            mine = sum(_rem(r) for r in on_roll if same_project(r["production_project"], project))
+        if foreign:
+            # Another project's produced roll: only the part reserved for this project.
+            allowed = min(allowed, mine)
+        elif others > EPS:
             balance = max(0.0, float((roll_balances or {}).get(roll_no) or 0))
-            spare = 0.0 if foreign else max(0.0, balance - others - mine)
-            allowed = min(allowed, spare + mine)
+            allowed = min(allowed, max(0.0, balance - others - mine) + mine)
 
     return allowed, free, own, total
+
+
+def place_packed_rolls(room, packed, seen=()):
+    """Place rolls from the knitting roll register (Roll Packing Lists) into warehouses.
+
+    room    {warehouse: qty of the batch there not already on a numbered roll}
+    packed  [(roll_no, weight, target warehouse or None)] in packing order
+    seen    roll nos. the stock ledger has moved — those follow the ledger, not this
+
+    Each roll goes to its target warehouse if the batch still has unnumbered stock there,
+    else to the warehouse with the most. Nothing is placed once the batch has no
+    unnumbered stock left anywhere (it has left stores).
+
+    Returns ({warehouse: {roll_no: weight}}, {warehouse, ...} where more was placed than
+    was unnumbered — part of the batch left without roll numbers, so some listed rolls
+    may be gone).
+    """
+    room = {wh: float(q) for wh, q in room.items()}
+    placed, uncertain = {}, set()
+    for roll, weight, target in packed:
+        if roll in seen or not room:
+            continue
+        wh = target if room.get(target, 0) > EPS else max(room, key=room.get)
+        if room[wh] <= EPS:
+            continue
+        if weight > room[wh] + EPS:
+            uncertain.add(wh)
+        placed.setdefault(wh, {})[roll] = placed.get(wh, {}).get(roll, 0.0) + float(weight)
+        room[wh] -= float(weight)
+    return placed, uncertain

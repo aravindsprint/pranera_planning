@@ -1,7 +1,8 @@
 import unittest
 
 from pranera_planning.reservation_math import (
-    allowed_issue_qty, clean_roll, location_room, location_summary, remaining_qty, same_project,
+    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, remaining_qty,
+    same_project,
 )
 
 
@@ -110,6 +111,43 @@ class TestReservationMath(unittest.TestCase):
         res = [{"production_project": "C", "roll_no": "R1", "reserved_qty": 10, "issued_qty": 0}]
         allowed, *_ = allowed_issue_qty(100, res, "B", rolls, "R1", owner="A")
         self.assertEqual(allowed, 0)
+
+
+    def test_foreign_owned_batch_only_the_reserved_roll(self):
+        rolls = {"R1": 500, "R4": 400}
+        res = [{"production_project": "B", "roll_no": "R4", "reserved_qty": 400, "issued_qty": 0}]
+        allowed, *_ = allowed_issue_qty(1900, res, "B", rolls, "R4", owner="A")
+        self.assertEqual(allowed, 400)
+        allowed, *_ = allowed_issue_qty(1900, res, "B", rolls, "R1", owner="A")   # a roll not reserved for B
+        self.assertEqual(allowed, 0)
+        allowed, *_ = allowed_issue_qty(1900, res, "A", rolls, "R1", owner="A")   # the owner, any free roll
+        self.assertEqual(allowed, 1500)
+
+    # ── knitted rolls from Roll Packing Lists ────────────────────────────────
+    def test_rolls_go_to_the_warehouse_the_batch_was_delivered_to(self):
+        placed, uncertain = place_packed_rolls(
+            {"A": 50, "B": 100}, [("R1", 25, "A"), ("R2", 25, "A")])
+        self.assertEqual(placed, {"A": {"R1": 25, "R2": 25}})
+        self.assertEqual(uncertain, set())
+
+    def test_rolls_the_ledger_has_moved_are_left_to_the_ledger(self):
+        placed, _ = place_packed_rolls({"A": 25}, [("R1", 25, "A"), ("R2", 25, "A")], seen={"R1"})
+        self.assertEqual(placed, {"A": {"R2": 25}})
+
+    def test_batch_that_left_stores_places_nothing(self):
+        placed, _ = place_packed_rolls({}, [("R1", 25, "A")])
+        self.assertEqual(placed, {})
+        placed, _ = place_packed_rolls({"A": 0}, [("R1", 25, "A")])
+        self.assertEqual(placed, {})
+
+    def test_partly_issued_without_numbers_is_flagged(self):
+        placed, uncertain = place_packed_rolls({"A": 30}, [("R1", 25, "A"), ("R2", 25, "A")])
+        self.assertEqual(placed, {"A": {"R1": 25, "R2": 25}})
+        self.assertEqual(uncertain, {"A"})
+
+    def test_target_gone_falls_back_to_the_fullest_warehouse(self):
+        placed, _ = place_packed_rolls({"A": 0, "B": 10, "C": 60}, [("R1", 25, "A")])
+        self.assertEqual(placed, {"C": {"R1": 25}})
 
 
 if __name__ == "__main__":

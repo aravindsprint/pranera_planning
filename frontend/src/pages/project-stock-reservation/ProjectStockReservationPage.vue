@@ -120,8 +120,14 @@
             </thead>
             <tbody>
               <tr v-for="g in data.stages" :key="g.stage">
-                <td><div class="item">{{ g.stage }}</div><div class="sub">{{ g.batches }} batch{{ g.batches === 1 ? '' : 'es' }}</div></td>
-                <td class="num">{{ g.input_qty ? fmt(g.input_qty) : '—' }}</td>
+                <td>
+                  <div class="item">{{ g.stage }}</div>
+                  <div class="sub">
+                    {{ g.batches }} batch{{ g.batches === 1 ? '' : 'es' }}
+                    <template v-if="g.shared_step"> · runs alongside {{ siblings(g) }}</template>
+                  </div>
+                </td>
+                <td class="num" :title="g.shared_step ? 'Shared with the stages running alongside it' : ''">{{ g.input_qty ? fmt(g.input_qty) : '—' }}</td>
                 <td class="num"><strong>{{ fmt(g.produced_qty) }}</strong> <span class="uom">{{ g.uom }}</span></td>
                 <td class="num">
                   <template v-if="g.difference_qty !== null">
@@ -211,7 +217,12 @@
                       <tbody>
                         <template v-for="l in r.locations" :key="l.warehouse">
                           <tr :class="{ wh: r.roll_tracked }">
-                            <td>{{ l.warehouse }}</td>
+                            <td>
+                              {{ l.warehouse }}
+                              <div v-if="l.rolls_uncertain" class="sub warn">
+                                Part of this batch left without roll numbers — some listed rolls may already be gone.
+                              </div>
+                            </td>
                             <td class="num">{{ fmt(l.available_qty) }}</td>
                             <td class="num">{{ fmt(l.reserved_remaining) }}</td>
                             <td class="num">{{ fmt(l.free_qty) }}</td>
@@ -283,6 +294,8 @@
           Reserved stock cannot be issued to any other project.
           <template v-if="sec.key === 'produced'">
             Produced stock belongs to {{ data.project }}: another project can take it only once it is reserved for that project here.
+            Stages come from the operation that made each batch (its Roll Packing List's job card, else its work order);
+            knitted rolls come from submitted Roll Packing Lists.
           </template>
         </p>
         </section>
@@ -406,6 +419,10 @@ const batchSections = computed(() => {
   ].filter((sec) => sec.rows.length)
 })
 const sectionCount = computed(() => batchSections.value.length + (data.value?.reserved_for.length ? 1 : 0))
+
+function siblings(g) {
+  return data.value.stages.filter((x) => x.step === g.step && x.stage !== g.stage).map((x) => x.stage).join(', ')
+}
 
 function sectionStats(sec) {
   const t = sec.totals
@@ -573,6 +590,7 @@ onMounted(() => {
 .section + .section { margin-top: 32px; }
 .flow { margin-bottom: 16px; }
 .level.ok { background: #dcfce7; color: #166534; }
+.sub.warn { color: #b45309; font-weight: 400; }
 tr.done td { color: var(--slate-500); }
 .section__h { font-size: 16px; font-weight: 650; margin-bottom: 12px; }
 .note { margin-top: 12px; font-size: 13px; color: var(--slate-500); max-width: 80ch; }

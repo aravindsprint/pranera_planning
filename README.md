@@ -130,10 +130,20 @@ Purchased batches stay shared until reserved. Switch off with site config
 
     bench --site <site> execute pranera_planning.reservation.preview_produced_conflicts --kwargs "{'days': 30}"
 
-**Produced section.** For a project with produced batches, the page shows them by stage
-(`project_stock_reservation_stages`, default GKF → Greige, DKF → Dyed, SKF → Finished, else the
-item group), with input vs produced per stage, and where the output is now (stores, WIP, at the
-subcontractor). Produced batches can be reserved for another project from the same table.
+**Produced section.** For a project with produced batches, the page shows them by stage, with
+input vs produced per stage and where the output is now (stores, WIP, at the subcontractor).
+A batch's stage is the operation that made it: the Job Card operation on its submitted Roll
+Packing List (KNITTING, COLLAR KNITTING, CUFF KNITTING), else the last operation of the Work
+Order that produced it, else the item code prefix (`project_stock_reservation_stages`, default
+GKF → Knitting, DKF → Dyeing, SKF → Finishing). Stages on the same step (same prefix) run side by
+side and share their input. Produced batches can be reserved for another project from the same
+table.
+
+**Knitted rolls.** Batches move on as a whole without roll numbers on the Stock Entry, so a
+batch's rolls come from its submitted Roll Packing Lists (roll no., weight). They are placed in
+the stores warehouse the batch sits in, preferring the one the linked Stock Entry delivered to;
+a roll whose number appears on a Stock Entry line follows the ledger instead. If part of a batch
+left without roll numbers the page flags that the list may include rolls that are gone.
 
 Which project an issue belongs to: Material Transfer for Manufacture / Manufacture take the
 Work Order's project (else the entry's own). Send to Subcontractor takes, per line, the project of

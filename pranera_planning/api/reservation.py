@@ -5,8 +5,8 @@ import frappe
 from frappe.utils import flt
 
 from pranera_planning.reservation import (
-    get_elsewhere_qty, get_issue_lines, get_produced_batches, get_reservation_state,
-    reservations_at, roll_tracked_items, stage_of, stages,
+    get_batch_operations, get_elsewhere_qty, get_issue_lines, get_produced_batches,
+    get_reservation_state, reservations_at, roll_tracked_items, stage_of, stage_rank,
 )
 from pranera_planning.reservation_math import EPS, location_summary, same_project
 
@@ -148,7 +148,9 @@ def _batch_rows(project, batches, qty_field):
     lines = get_issue_lines(batch_nos)
     state = get_reservation_state(batch_nos, issue_lines=lines)
     roll_items = roll_tracked_items([b.item_code for b in batches])
-    elsewhere = get_elsewhere_qty(batch_nos) if qty_field == "produced_qty" else {}
+    produced = qty_field == "produced_qty"
+    elsewhere = get_elsewhere_qty(batch_nos) if produced else {}
+    operations = get_batch_operations(batch_nos) if produced else {}
 
     issued_by = defaultdict(lambda: defaultdict(float))     # batch -> project -> qty
     for l in lines:
@@ -168,7 +170,9 @@ def _batch_rows(project, batches, qty_field):
             "batch_no": b.batch_no,
             "received_qty": flt(b.get(qty_field)),
             "made_by": b.get("made_by"),
-            "stage": stage_of(b.item_code, b.get("item_group")) if qty_field == "produced_qty" else None,
+            "stage": stage_of(b.item_code, b.get("item_group"), operations.get(b.batch_no)) if produced else None,
+            "stage_rank": stage_rank(b.item_code) if produced else None,
+            "operation": operations.get(b.batch_no),
             "elsewhere": elsewhere.get(b.batch_no, {}),
             "available_qty": st["available"],
             "used_own_qty": used_own,
@@ -186,43 +190,54 @@ def _batch_rows(project, batches, qty_field):
 
 
 def _stages(produced_rows, reserved_for, received_rows, project):
-    """Per stage, in the configured order (Greige -> Dyed -> Finished, then anything else):
-    what went in, what came out, and where the output is now.
+    """Per stage, in process order, what went in, what came out, and where the output is now.
 
-    input      what the previous stage's batches issued to this project (for the first
-               stage: yarn issued to it — its reservations plus its own purchases)
+    A stage is the operation that made the batches (Knitting, Collar Knitting, Dyeing, ...)
+    or, failing that, the item code prefix label. Stages are ordered by process step
+    (item code prefix: GKF, DKF, SKF, ...); stages on the same step run side by side —
+    Knitting, Collar Knitting and Cuff Knitting all take yarn.
+
+    input      what the previous step's batches issued to this project (first step: yarn
+               issued to it — its reservations plus its own purchases). Shown only when a
+               step has a single stage, since side-by-side stages share their input.
     produced   output batches made for this project
     difference input - produced: still being processed, or lost (process loss)
     """
-    order = [label for _, label in stages()]
     by_stage = defaultdict(list)
     for r in produced_rows:
-        by_stage[r["stage"]].append(r)
-    labels = [l for l in order if l in by_stage] + sorted(l for l in by_stage if l not in order)
+        by_stage[(r["stage_rank"], r["stage"])].append(r)
+    by_step = defaultdict(list)
+    for rank, label in by_stage:
+        by_step[rank].append(label)
 
-    first_input = sum(x["issued_qty"] for x in reserved_for) + sum(r["used_own_qty"] for r in received_rows)
-    out, prev_out = [], first_input
-    for label in labels:
-        rs = by_stage[label]
-        produced = sum(r["received_qty"] for r in rs)
-        wip = sum(r["elsewhere"].get("In WIP", 0) for r in rs)
-        sub = sum(r["elsewhere"].get("At subcontractor", 0) for r in rs)
-        used_own = sum(r["used_own_qty"] for r in rs)
-        used_other = sum(x["qty"] for r in rs for x in r["used_other"])
-        out.append({
-            "stage": label,
-            "batches": len(rs),
-            "uom": rs[0]["uom"],
-            "input_qty": round(prev_out, 3),
-            "produced_qty": round(produced, 3),
-            "difference_qty": round(prev_out - produced, 3) if prev_out else None,
-            "in_stores_qty": round(sum(r["available_qty"] for r in rs), 3),
-            "in_wip_qty": round(wip, 3),
-            "at_subcontractor_qty": round(sub, 3),
-            "used_own_qty": round(used_own, 3),
-            "used_other_qty": round(used_other, 3),
-        })
-        prev_out = used_own
+    step_input = sum(x["issued_qty"] for x in reserved_for) + sum(r["used_own_qty"] for r in received_rows)
+    out = []
+    for rank in sorted(by_step):
+        labels = sorted(by_step[rank])
+        shared = len(labels) > 1
+        step_used_own = 0.0
+        for label in labels:
+            rs = by_stage[(rank, label)]
+            produced = sum(r["received_qty"] for r in rs)
+            used_own = sum(r["used_own_qty"] for r in rs)
+            step_used_own += used_own
+            inp = None if shared or not step_input else round(step_input, 3)
+            out.append({
+                "stage": label,
+                "step": rank,
+                "shared_step": shared,
+                "batches": len(rs),
+                "uom": rs[0]["uom"],
+                "input_qty": inp,
+                "produced_qty": round(produced, 3),
+                "difference_qty": round(inp - produced, 3) if inp else None,
+                "in_stores_qty": round(sum(r["available_qty"] for r in rs), 3),
+                "in_wip_qty": round(sum(r["elsewhere"].get("In WIP", 0) for r in rs), 3),
+                "at_subcontractor_qty": round(sum(r["elsewhere"].get("At subcontractor", 0) for r in rs), 3),
+                "used_own_qty": round(used_own, 3),
+                "used_other_qty": round(sum(x["qty"] for r in rs for x in r["used_other"]), 3),
+            })
+        step_input = step_used_own
     return out
 
 
@@ -297,6 +312,7 @@ def _locations(st, roll_tracked):
                  "free_qty": round(v["free"], 3)}
                 for roll, v in s["rolls"].items()
             ]
+            entry["rolls_uncertain"] = bool(loc.get("rolls_uncertain"))
             u = s["unnumbered"]
             entry["unnumbered"] = {"qty": round(u["qty"], 3), "reserved_remaining": round(u["reserved"], 3),
                                    "free_qty": round(u["free"], 3)}

@@ -49,7 +49,7 @@ project_stock_reservation_protect_produced             0 lets produced batches g
                                                        without a reservation (default 1)
 project_stock_reservation_stages                       [[item code prefix, stage], ...] for the
                                                        page's produced section, default
-                                                       [["GKF","Greige"],["DKF","Dyed"],["SKF","Finished"]]
+                                                       [["GKF","Knitting"],["DKF","Dyeing"],["SKF","Finishing"]]
 project_stock_reservation_excluded_warehouse_prefixes  list, default ["WIP", "SUB", "Direct Delivery"]
 project_stock_reservation_excluded_warehouses          list of extra warehouses whose stock is committed
 project_stock_reservation_pool_warehouses              list of warehouses to always treat as stores
@@ -67,14 +67,14 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation_math import (
-    EPS, allowed_issue_qty, clean_roll, remaining_qty, same_project,
+    EPS, allowed_issue_qty, clean_roll, place_packed_rolls, remaining_qty, same_project,
 )
 
 ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", "Manufacture")
 DEFAULT_EXCLUDED_PREFIXES = ("WIP", "SUB", "Direct Delivery")
 DEFAULT_ROLL_ITEM_GROUPS = ("FABRIC", "COLLAR", "CUFF")
 DEFAULT_ROLL_FIELD = "custom_roll_no"
-DEFAULT_STAGES = (("GKF", "Greige"), ("DKF", "Dyed"), ("SKF", "Finished"))
+DEFAULT_STAGES = (("GKF", "Knitting"), ("DKF", "Dyeing"), ("SKF", "Finishing"))
 
 # Which project does a Stock Entry line belong to?
 #
@@ -137,11 +137,24 @@ def stages():
     return [tuple(x) for x in (frappe.conf.get("project_stock_reservation_stages") or DEFAULT_STAGES)]
 
 
-def stage_of(item_code, item_group=None):
+def stage_of(item_code, item_group=None, operation=None):
+    """Stage label for a produced batch: the operation that made it ("KNITTING" -> "Knitting")
+    if known, else the configured item code prefix label, else the item group."""
+    if operation:
+        return operation.title() if operation.isupper() else operation
     for prefix, label in stages():
         if (item_code or "").upper().startswith(prefix.upper()):
             return label
     return item_group or "Other"
+
+
+def stage_rank(item_code):
+    """Position in the process by item code prefix (GKF 0, DKF 1, SKF 2, ...), 99 if unknown.
+    Stages of the same rank (Knitting, Collar Knitting, Cuff Knitting) run side by side."""
+    for i, (prefix, _) in enumerate(stages()):
+        if (item_code or "").upper().startswith(prefix.upper()):
+            return i
+    return 99
 
 
 def roll_item_groups():
@@ -483,36 +496,124 @@ def get_available_qty(batch_nos):
 
 
 def get_stock_locations(batch_nos):
-    """{batch: {warehouse: {"available": qty, "rolls": {roll_no: balance}}}} over issuable
-    warehouses. Roll balances come from the roll no. on the Stock Entry line behind each
-    bundle entry (joined by voucher_detail_no, which is the Stock Entry Detail row name);
-    stock moved by any other voucher, or with no roll no., adds to no roll.
+    """{batch: {warehouse: {"available", "rolls", "rolls_uncertain"}}} over issuable warehouses.
+
+    rolls  {roll_no: qty} numbered rolls in that warehouse, from two sources:
+      1. the stock ledger — the roll no. on the Stock Entry line behind each bundle entry
+         (joined by voucher_detail_no, the Stock Entry Detail row name). A roll the ledger
+         has seen follows the ledger.
+      2. submitted Roll Packing Lists (the knitting roll register) for rolls the ledger has
+         never seen — batches move on as a whole without roll numbers, so this is the only
+         record of which rolls a batch holds. They are placed in the stores warehouse the
+         batch sits in, preferring the one the linked Stock Entry delivered to.
+    rolls_uncertain  True when those rolls add up to more than is still unnumbered there:
+      part of the batch left without roll numbers, so some listed rolls may be gone.
     """
     if not batch_nos:
         return {}
-    clause, values = _pool_clause("sbe.warehouse")
-    values["batches"] = tuple(batch_nos)
     rows = frappe.db.sql(
         f"""SELECT sbe.batch_no, sbe.warehouse, {_roll_expr()} AS roll_no, SUM(sbe.qty) AS qty
             FROM `tabSerial and Batch Entry` sbe
             JOIN `tabSerial and Batch Bundle` sbb ON sbb.name = sbe.parent
             LEFT JOIN `tabStock Entry Detail` sed
               ON sbb.voucher_type = 'Stock Entry' AND sed.name = sbb.voucher_detail_no
-            WHERE sbb.docstatus = 1 AND sbb.is_cancelled = 0
-              AND sbe.batch_no IN %(batches)s AND {clause}
+            WHERE sbb.docstatus = 1 AND sbb.is_cancelled = 0 AND sbe.batch_no IN %(batches)s
             GROUP BY sbe.batch_no, sbe.warehouse, roll_no""",
-        values, as_dict=True,
+        {"batches": tuple(batch_nos)}, as_dict=True,
     )
     out = {b: {} for b in batch_nos}
+    seen = defaultdict(set)                  # batch -> every roll no. the ledger has moved
     for r in rows:
-        loc = out.setdefault(r.batch_no, {}).setdefault(r.warehouse, {"available": 0.0, "rolls": defaultdict(float)})
-        loc["available"] += flt(r.qty)
         roll = clean_roll(r.roll_no)
         if roll:
+            seen[r.batch_no].add(roll)
+        if not is_pool_warehouse(r.warehouse):
+            continue
+        loc = out.setdefault(r.batch_no, {}).setdefault(
+            r.warehouse, {"available": 0.0, "rolls": defaultdict(float), "rolls_uncertain": False})
+        loc["available"] += flt(r.qty)
+        if roll:
             loc["rolls"][roll] += flt(r.qty)
+
+    for batch, packed in get_packing_list_rolls(batch_nos).items():
+        locs = out.get(batch) or {}
+        room = {
+            wh: loc["available"] - sum(q for q in loc["rolls"].values() if q > EPS)
+            for wh, loc in locs.items()
+        }
+        placed, uncertain = place_packed_rolls(room, packed, seen[batch])
+        for wh, rolls in placed.items():
+            for roll, weight in rolls.items():
+                locs[wh]["rolls"][roll] += weight
+            locs[wh]["rolls_uncertain"] = wh in uncertain
+
     for locs in out.values():
         for loc in locs.values():
             loc["rolls"] = dict(loc["rolls"])
+    return out
+
+
+def get_packing_list_rolls(batch_nos):
+    """{batch: [(roll_no, weight, warehouse the linked Stock Entry delivered the batch to)]}
+    from submitted Roll Packing Lists."""
+    if not batch_nos or not frappe.db.exists("DocType", "Roll Packing List"):
+        return {}
+    rows = frappe.db.sql(
+        """SELECT rpli.batch, rpli.roll_no, rpli.roll_weight,
+                  (SELECT sed.t_warehouse FROM `tabStock Entry Detail` sed
+                    WHERE sed.parent = rpl.stock_entry AND sed.batch_no = rpli.batch
+                      AND IFNULL(sed.t_warehouse, '') <> '' LIMIT 1) AS target
+           FROM `tabRoll Packing List Item` rpli
+           JOIN `tabRoll Packing List` rpl ON rpl.name = rpli.parent AND rpl.docstatus = 1
+           WHERE rpli.batch IN %(batches)s
+           ORDER BY rpl.posting_date, rpli.idx""",
+        {"batches": tuple(batch_nos)}, as_dict=True,
+    )
+    out, dup = defaultdict(list), set()
+    for r in rows:
+        roll = clean_roll(r.roll_no)
+        if roll and (r.batch, roll) not in dup and flt(r.roll_weight) > 0:
+            dup.add((r.batch, roll))
+            out[r.batch].append((roll, flt(r.roll_weight), r.target))
+    return out
+
+
+def get_batch_operations(batch_nos):
+    """{batch: operation that produced it}: the Job Card operation on its Roll Packing List
+    (KNITTING, COLLAR KNITTING, ...), else the last operation of the Work Order whose
+    Manufacture entry produced it."""
+    batch_nos = list({b for b in batch_nos if b})
+    if not batch_nos:
+        return {}
+    out = {}
+    if frappe.db.exists("DocType", "Roll Packing List"):
+        for batch, op in frappe.db.sql(
+            """SELECT rpli.batch, MAX(jc.operation)
+               FROM `tabRoll Packing List Item` rpli
+               JOIN `tabRoll Packing List` rpl ON rpl.name = rpli.parent AND rpl.docstatus = 1
+               JOIN `tabJob Card` jc ON rpl.document_type = 'Job Card' AND jc.name = rpl.document_name
+               WHERE rpli.batch IN %(batches)s AND IFNULL(jc.operation, '') <> ''
+               GROUP BY rpli.batch""",
+            {"batches": tuple(batch_nos)},
+        ):
+            out[batch] = op
+    missing = [b for b in batch_nos if b not in out]
+    if missing:
+        for batch, op in frappe.db.sql(
+            """SELECT sbe.batch_no,
+                      (SELECT woo.operation FROM `tabWork Order Operation` woo
+                        WHERE woo.parent = se.work_order ORDER BY woo.idx DESC LIMIT 1)
+               FROM `tabSerial and Batch Entry` sbe
+               JOIN `tabSerial and Batch Bundle` sbb
+                 ON sbb.name = sbe.parent AND sbb.voucher_type = 'Stock Entry'
+                AND sbb.docstatus = 1 AND sbb.is_cancelled = 0
+               JOIN `tabStock Entry` se ON se.name = sbb.voucher_no AND se.purpose = 'Manufacture'
+               JOIN `tabStock Entry Detail` sed ON sed.name = sbb.voucher_detail_no AND sed.is_finished_item = 1
+               WHERE sbe.batch_no IN %(batches)s AND sbe.qty > 0 AND IFNULL(se.work_order, '') <> ''""",
+            {"batches": tuple(missing)},
+        ):
+            if op and batch not in out:
+                out[batch] = op
     return out
 
 
@@ -764,14 +865,23 @@ def _check(doc):
         st = state.get(batch)
         res = reservations_at(st, wh) if st else []
         on_roll = [r for r in res if r["roll_no"] == roll]
-        if not on_roll:
+        owner = owners.get(batch)
+        foreign = bool(owner) and not same_project(owner, project)
+        if not on_roll and not foreign:
             continue
         loc = st["locations"].get(wh, {"available": 0.0, "rolls": {}})
         allowed, *_ = allowed_issue_qty(loc["available"], res, project, loc["rolls"], roll, owner=owners.get(batch))
-        if qty > allowed + EPS:
+        if qty <= allowed + EPS:
+            continue
+        if foreign and not any(same_project(r["production_project"], project) for r in on_roll):
             problems.append(_(
-                "<b>{0}</b> roll <b>{1}</b> in {2} is reserved for {3} — it cannot be issued to project {4}."
-            ).format(batch, roll, wh, _others(on_roll, project), project))
+                "<b>{0}</b> roll <b>{1}</b> in {2} was produced for project <b>{3}</b> and is not reserved "
+                "for {4}. Reserve that roll for {4} on the Stock Reservation page first."
+            ).format(batch, roll, wh, owner, project))
+        else:
+            problems.append(_(
+                "<b>{0}</b> roll <b>{1}</b> in {2}: only {3:g} of it can go to project {4}. Reserved for others: {5}."
+            ).format(batch, roll, wh, allowed, project, _others(on_roll, project)))
 
     if problems:
         frappe.throw(

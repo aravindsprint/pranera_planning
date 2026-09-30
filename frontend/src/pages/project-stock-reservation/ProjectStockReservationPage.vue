@@ -176,10 +176,17 @@
           </p>
         </div>
 
-        <div class="stats">
-          <div v-for="s in sectionStats(sec)" :key="s.label" class="stat">
-            <div class="stat__v">{{ fmt(s.value) }}</div>
-            <div class="stat__l">{{ s.label }}</div>
+        <div v-for="g in itemGroups(sec)" :key="g.item_code" class="item-cards">
+          <div class="item-cards__head">
+            <span class="item">{{ g.item_name || g.item_code }}</span>
+            <span v-if="g.item_name && g.item_name !== g.item_code" class="sub">{{ g.item_code }}</span>
+            <span class="sub">· {{ g.rows.length }} batch{{ g.rows.length === 1 ? '' : 'es' }} · {{ g.uom }}</span>
+          </div>
+          <div class="stats">
+            <div v-for="s in itemStats(sec, g)" :key="s.label" class="stat">
+              <div class="stat__v">{{ fmt(s.value) }}</div>
+              <div class="stat__l">{{ s.label }}</div>
+            </div>
           </div>
         </div>
 
@@ -477,6 +484,33 @@ function siblings(g) {
   return data.value.stages.filter((x) => x.step === g.step && x.stage !== g.stage).map((x) => x.stage).join(', ')
 }
 
+// One set of cards per item: kilos of greige, kilos of dyed fabric and pieces of collars are
+// never added together. Groups keep the order the items first appear in the table.
+function itemGroups(sec) {
+  const groups = new Map()
+  for (const r of sec.rows) {
+    if (!groups.has(r.item_code)) groups.set(r.item_code, { item_code: r.item_code, item_name: r.item_name, uom: r.uom, rows: [] })
+    groups.get(r.item_code).rows.push(r)
+  }
+  return [...groups.values()]
+}
+
+function itemTotals(rows) {
+  const sum = (f) => rows.reduce((a, r) => a + (f(r) || 0), 0)
+  return {
+    received_qty: sum((r) => r.received_qty),
+    used_own_qty: sum((r) => r.used_own_qty),
+    used_other_qty: sum((r) => r.used_other.reduce((a, o) => a + o.qty, 0)),
+    available_qty: sum((r) => r.available_qty),
+    reserved_remaining: sum((r) => r.reserved_remaining),
+    free_qty: sum((r) => r.free_qty),
+  }
+}
+
+function itemStats(sec, g) {
+  return sectionStats({ ...sec, totals: itemTotals(g.rows) })
+}
+
 function sectionStats(sec) {
   const t = sec.totals
   return [
@@ -676,6 +710,8 @@ onMounted(() => {
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .stat { background: #fff; border: 1px solid var(--slate-200); border-radius: var(--radius-md); padding: 12px 14px; }
+.item-cards + .item-cards { margin-top: 4px; }
+.item-cards__head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; font-size: 13px; }
 .stat__v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .stat__l { font-size: 12px; color: var(--slate-500); margin-top: 2px; }
 

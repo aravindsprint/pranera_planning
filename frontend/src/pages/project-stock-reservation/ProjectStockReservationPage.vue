@@ -320,29 +320,53 @@
           </select>
         </div>
         <div v-if="dlg.row.roll_tracked" class="form-group">
-          <label class="form-label" for="roll">Roll no.</label>
+          <div class="rolls__head">
+            <label class="form-label">Rolls</label>
+            <span class="rolls__count">{{ pickedRolls.length }} of {{ dlgRolls.length }} selected</span>
+          </div>
+          <template v-if="dlgRolls.length">
+            <div class="rolls__tools">
+              <input v-model.trim="dlg.rollSearch" class="form-input sm" placeholder="Search roll no." autocomplete="off" />
+              <button type="button" class="link-btn primary" @click="selectAllRolls">Select all free</button>
+              <button type="button" class="link-btn" :disabled="!pickedRolls.length" @click="clearRolls">Clear</button>
+            </div>
+            <div class="rolls__list" role="group" aria-label="Rolls">
+              <label v-for="x in shownRolls" :key="x.roll_no" class="rolls__item" :class="{ on: dlg.picked[x.roll_no] }">
+                <input v-model="dlg.picked[x.roll_no]" type="checkbox" />
+                <span class="rolls__no">{{ x.roll_no }}</span>
+                <span class="rolls__qty">{{ fmt(x.free_qty) }}<template v-if="x.free_qty < x.qty"> of {{ fmt(x.qty) }}</template> {{ dlg.row.uom }}</span>
+              </label>
+              <p v-if="!shownRolls.length" class="muted">No roll matches “{{ dlg.rollSearch }}”.</p>
+            </div>
+          </template>
+          <p v-else class="hint">No numbered rolls on record in this warehouse.</p>
+
+          <label class="form-label other" for="other-roll">Roll not in the list</label>
           <input
-            id="roll" v-model.trim="dlg.roll_no" class="form-input" list="roll-options" autocomplete="off"
-            placeholder="Pick a roll or type its number" @change="onLocationChange"
+            id="other-roll" v-model.trim="dlg.otherRoll" class="form-input" autocomplete="off"
+            placeholder="Type its roll no. (optional)"
           />
-          <datalist id="roll-options">
-            <option v-for="x in dlgRolls" :key="x.roll_no" :value="x.roll_no">{{ fmt(x.free_qty) }} free</option>
-          </datalist>
-          <p class="hint">{{ rollHint }}</p>
+          <p class="hint">{{ otherRollHint }}</p>
+          <p v-if="rollsUncertain" class="hint warn">Part of this batch left without roll numbers — some listed rolls may already be gone.</p>
         </div>
 
         <div class="form-group">
           <label class="form-label" for="prod">Reserve for project</label>
           <LinkField
             id="prod" v-model="dlg.production_project" doctype="Project" title-field="project_name"
-            :filters="[['Project', 'project_type', '=', 'Production'], ['Project', 'status', '=', 'Open']]"
+            :filters="[['Project', 'project_type', '=', 'Production'], ['Project', 'status', '=', 'Open'], ['Project', 'name', '!=', data.project]]"
             placeholder="Production project" empty-label="No open Production project found"
           />
-          <p class="hint">Open projects typed Production only.</p>
+          <p class="hint">Open projects typed Production only, other than {{ data.project }}.</p>
         </div>
         <div class="form-group">
           <label class="form-label" for="qty">Quantity ({{ dlg.row.uom }})</label>
-          <input id="qty" v-model.number="dlg.qty" type="number" min="0" step="any" class="form-input" />
+          <input
+            id="qty" v-model.number="dlg.qty" type="number" min="0" step="any" class="form-input"
+            :readonly="qtyIsTotal" :class="{ total: qtyIsTotal }"
+          />
+          <p v-if="qtyIsTotal" class="hint">Sum of the {{ entries.length }} rolls selected — each is reserved in full.</p>
+          <p v-else-if="dlg.row.roll_tracked && entries.length === 1" class="hint">One roll: lower the quantity to reserve only part of it.</p>
         </div>
         <div class="form-group">
           <label class="form-label" for="rem">Remarks</label>
@@ -354,7 +378,7 @@
         <div class="dialog__foot">
           <button type="button" class="btn btn-outline" @click="closeDialog">Cancel</button>
           <button type="submit" class="btn btn-primary" :disabled="dlg.saving || !canSave">
-            {{ dlg.saving ? 'Reserving…' : 'Reserve' }}
+            {{ dlg.saving ? 'Reserving…' : entries.length > 1 ? `Reserve ${entries.length} rolls` : 'Reserve' }}
           </button>
         </div>
       </form>
@@ -367,7 +391,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'
-import { callMessage, createDoc, updateDoc } from '@/api/frappe'
+import { callMessage, updateDoc } from '@/api/frappe'
 
 // Only Projects that actually have a received batch — plain Project search would include
 // every project in the system, most of which never had anything bought under them and only
@@ -400,7 +424,8 @@ const error = ref('')
 const open = reactive({})
 
 const dlg = reactive({
-  row: null, warehouse: '', roll_no: '', production_project: '', qty: 0, remarks: '', saving: false, error: '',
+  row: null, warehouse: '', picked: {}, otherRoll: '', rollSearch: '',
+  production_project: '', qty: 0, remarks: '', saving: false, error: '',
 })
 
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })
@@ -478,44 +503,79 @@ const dlgWarehouses = computed(() => {
 })
 const dlgLocation = computed(() => (dlg.row?.locations || []).find((l) => l.warehouse === dlg.warehouse) || null)
 const dlgRolls = computed(() => (dlgLocation.value?.rolls || []).filter((x) => x.free_qty > 0))
-const dlgKnownRoll = computed(() => (dlgLocation.value?.rolls || []).find((x) => x.roll_no === dlg.roll_no) || null)
+const shownRolls = computed(() => {
+  const q = dlg.rollSearch.toLowerCase()
+  return q ? dlgRolls.value.filter((x) => x.roll_no.toLowerCase().includes(q)) : dlgRolls.value
+})
+const pickedRolls = computed(() => dlgRolls.value.filter((x) => dlg.picked[x.roll_no]))
+const rollsUncertain = computed(() => !!dlgLocation.value?.rolls_uncertain)
+const unnumberedFree = computed(() => dlgLocation.value?.unnumbered?.free_qty || 0)
 
-// What the server will let this reservation hold (it caps anything above this).
+// What gets reserved: one entry per selected roll (in full), plus a typed roll not in the
+// list (from the stock with no roll no. on record), or the warehouse for a batch item.
+const entries = computed(() => {
+  if (!dlg.row) return []
+  if (!dlg.row.roll_tracked) return [{ roll_no: '', qty: dlgLocation.value?.free_qty || 0 }]
+  const out = pickedRolls.value.map((x) => ({ roll_no: x.roll_no, qty: x.free_qty }))
+  const other = dlg.otherRoll
+  if (other && !dlgRolls.value.some((x) => x.roll_no === other)) out.push({ roll_no: other, qty: unnumberedFree.value })
+  return out
+})
+const qtyIsTotal = computed(() => !!dlg.row?.roll_tracked && entries.value.length > 1)
+
+// "Free here" for the header: the whole warehouse for a batch item, the selection for rolls.
 const dlgFree = computed(() => {
   const l = dlgLocation.value
   if (!l) return 0
   if (!dlg.row.roll_tracked) return l.free_qty
-  if (dlgKnownRoll.value) return dlgKnownRoll.value.free_qty
-  return l.unnumbered?.free_qty || 0
+  return entries.value.length ? entries.value.reduce((a, e) => a + e.qty, 0) : l.free_qty
 })
 
-const rollHint = computed(() => {
-  const l = dlgLocation.value
-  if (!l) return ''
-  if (!dlg.roll_no) {
-    return dlgRolls.value.length
-      ? `${dlgRolls.value.length} numbered roll(s) free here. A roll not in the list is taken from stock with no roll no. on record.`
-      : 'No numbered rolls on record here — type the roll no. from the roll tag.'
-  }
-  if (dlgKnownRoll.value) return `Roll ${dlg.roll_no}: ${fmt(dlgKnownRoll.value.qty)} in stock, ${fmt(dlgKnownRoll.value.free_qty)} free.`
-  return `Roll ${dlg.roll_no} has no record in this warehouse yet — reserved out of the ${fmt(l.unnumbered?.free_qty)} with no roll no. on record.`
+const otherRollHint = computed(() => {
+  const other = dlg.otherRoll
+  if (!other) return `Stock here with no roll no. on record: ${fmt(unnumberedFree.value)} free.`
+  if (dlgRolls.value.some((x) => x.roll_no === other)) return `Roll ${other} is in the list above — tick it there instead.`
+  return `Roll ${other} is reserved out of the ${fmt(unnumberedFree.value)} with no roll no. on record.`
 })
 
 const canSave = computed(() =>
-  !!dlg.production_project && !!dlg.warehouse && dlg.qty > 0 && (!dlg.row?.roll_tracked || !!dlg.roll_no),
+  !!dlg.production_project && !!dlg.warehouse && entries.value.length > 0 && dlg.qty > 0,
 )
 
-function onLocationChange() { dlg.qty = dlgFree.value }
+// Re-total whenever the selection changes (not when the quantity itself is edited).
+watch(() => entries.value.map((e) => `${e.roll_no}:${e.qty}`).join('|'), () => syncQty())
+
+function syncQty() {
+  dlg.qty = Math.round(entries.value.reduce((a, e) => a + e.qty, 0) * 1000) / 1000
+}
+function onLocationChange() {
+  dlg.picked = {}
+  dlg.otherRoll = ''
+  dlg.rollSearch = ''
+  syncQty()
+}
+function selectAllRolls() {
+  for (const x of shownRolls.value) dlg.picked[x.roll_no] = true
+  syncQty()
+}
+function clearRolls() {
+  dlg.picked = {}
+  syncQty()
+}
 
 function openDialog(row, at = {}) {
   const first = row.locations.find((l) => l.free_qty > 0)
   Object.assign(dlg, {
     row,
     warehouse: at.warehouse || first?.warehouse || '',
-    roll_no: at.roll_no || '',
+    picked: {}, otherRoll: '', rollSearch: '',
     production_project: '', remarks: '', saving: false, error: '',
   })
-  dlg.qty = dlgFree.value
+  if (at.roll_no) {
+    if ((dlgLocation.value?.rolls || []).some((x) => x.roll_no === at.roll_no)) dlg.picked[at.roll_no] = true
+    else dlg.otherRoll = at.roll_no
+  }
+  syncQty()
 }
 function closeDialog() { dlg.row = null }
 
@@ -523,15 +583,20 @@ async function save() {
   dlg.saving = true
   dlg.error = ''
   try {
-    await createDoc('Project Stock Reservation', {
-      purchase_project: data.value.project,
-      production_project: dlg.production_project,
-      item_code: dlg.row.item_code,
-      batch_no: dlg.row.batch_no,
-      warehouse: dlg.warehouse,
-      roll_no: dlg.row.roll_tracked ? dlg.roll_no : '',
-      reserved_qty: dlg.qty,
-      remarks: dlg.remarks,
+    // One entry keeps the typed quantity (a whole batch-item reservation, or part of one
+    // roll); several rolls are each reserved in full.
+    const list = entries.value.length === 1 ? [{ ...entries.value[0], qty: dlg.qty }] : entries.value
+    await callMessage('pranera_planning.api.reservation.create_reservations', {
+      reservations: list.map((e) => ({
+        purchase_project: data.value.project,
+        production_project: dlg.production_project,
+        item_code: dlg.row.item_code,
+        batch_no: dlg.row.batch_no,
+        warehouse: dlg.warehouse,
+        roll_no: e.roll_no,
+        reserved_qty: e.qty,
+        remarks: dlg.remarks,
+      })),
     })
     const batch = dlg.row.batch_no
     closeDialog()
@@ -591,6 +656,26 @@ onMounted(() => {
 .flow { margin-bottom: 16px; }
 .level.ok { background: #dcfce7; color: #166534; }
 .sub.warn { color: #b45309; font-weight: 400; }
+.hint.warn { color: #b45309; }
+.rolls__head { display: flex; justify-content: space-between; align-items: baseline; }
+.rolls__count { font-size: 12px; color: var(--slate-500); }
+.rolls__tools { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.rolls__tools .form-input { flex: 1; min-width: 0; }
+.rolls__list {
+  max-height: 220px; overflow-y: auto; border: 1px solid var(--slate-200, #e2e8f0); border-radius: 8px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; padding: 6px;
+}
+.rolls__item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  font-size: 13px; user-select: none;
+}
+.rolls__item:hover { background: var(--slate-50, #f8fafc); }
+.rolls__item.on { background: #eff6ff; }
+.rolls__item input { accent-color: var(--primary); width: 15px; height: 15px; }
+.rolls__no { font-weight: 600; }
+.rolls__qty { margin-left: auto; color: var(--slate-500); font-variant-numeric: tabular-nums; }
+.form-label.other { margin-top: 12px; }
+.form-input.total { background: var(--slate-50, #f8fafc); font-weight: 600; }
 tr.done td { color: var(--slate-500); }
 .section__h { font-size: 16px; font-weight: 650; margin-bottom: 12px; }
 .note { margin-top: 12px; font-size: 13px; color: var(--slate-500); max-width: 80ch; }

@@ -2,6 +2,7 @@ import json
 from collections import defaultdict
 
 import frappe
+from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation import (
@@ -130,6 +131,36 @@ def get_purchase_project_stock(project, item_group=None):
         "produced_totals": _totals(produced_rows),
         "stages": _stages(produced_rows, reserved_for, rows, project),
     }
+
+
+@frappe.whitelist(methods=["POST"])
+def create_reservations(reservations):
+    """Create several Project Stock Reservations in one request — e.g. many rolls of one
+    batch picked together on the page. All or nothing: any failure rolls the whole request
+    back, and the message names the roll (or batch) that failed. Each reservation is
+    validated in turn, so later ones see the capacity taken by earlier ones.
+
+    `reservations` is a list (or its JSON) of dicts with the Project Stock Reservation
+    fields: purchase_project, production_project, item_code, batch_no, warehouse,
+    roll_no, reserved_qty, remarks.
+    """
+    frappe.has_permission("Project Stock Reservation", "create", throw=True)
+    if isinstance(reservations, str):
+        reservations = json.loads(reservations or "[]")
+    if not reservations:
+        frappe.throw(_("Nothing to reserve."))
+    allowed = {"purchase_project", "production_project", "item_code", "batch_no", "warehouse",
+               "roll_no", "reserved_qty", "remarks", "sales_order"}
+    names = []
+    for r in reservations:
+        what = _("roll {0}").format(r.get("roll_no")) if r.get("roll_no") else _("batch {0}").format(r.get("batch_no"))
+        try:
+            doc = frappe.get_doc({"doctype": "Project Stock Reservation", **{k: v for k, v in r.items() if k in allowed}})
+            doc.insert()
+        except frappe.ValidationError as e:
+            frappe.throw(_("Nothing was reserved — {0} failed: {1}").format(what, e), title=_("Could not reserve"))
+        names.append(doc.name)
+    return names
 
 
 def _in_group(b, item_group):

@@ -128,28 +128,34 @@ def place_packed_rolls(room, packed, seen=()):
 
     room    {warehouse: qty of the batch there not already on a numbered roll}
     packed  [(roll_no, weight, target warehouse or None)] in packing order
-    seen    roll nos. the stock ledger has moved — those follow the ledger, not this
+    seen    roll nos. to leave out: moved by the stock ledger (they follow the ledger), or
+            whose reservation has been fulfilled (issued, so gone)
 
     Each roll goes to its target warehouse if the batch still has unnumbered stock there,
     else to the warehouse with the most. Nothing is placed once the batch has no
     unnumbered stock left anywhere (it has left stores).
 
-    Returns ({warehouse: {roll_no: weight}}, {warehouse, ...} where more was placed than
-    was unnumbered — part of the batch left without roll numbers, so some listed rolls
-    may be gone).
+    Returns ({warehouse: {roll_no: weight}}, {warehouse, ...} where the rolls don't match
+    what is still unnumbered — part of the batch left without roll numbers, so the list is
+    a guess: some listed rolls may be gone, or some gone rolls may be listed).
     """
     room = {wh: float(q) for wh, q in room.items()}
-    placed, uncertain = {}, set()
+    placed, uncertain, left_out = {}, set(), False
     for roll, weight, target in packed:
         if roll in seen or not room:
             continue
         wh = target if room.get(target, 0) > EPS else max(room, key=room.get)
         if room[wh] <= EPS:
+            left_out = True
             continue
         if weight > room[wh] + EPS:
             uncertain.add(wh)
         placed.setdefault(wh, {})[roll] = placed.get(wh, {}).get(roll, 0.0) + float(weight)
         room[wh] -= float(weight)
+    if left_out:
+        # Some rolls didn't fit what is still unnumbered here: part of the batch left
+        # without roll numbers, and which rolls went is a guess.
+        uncertain |= set(placed)
     return placed, uncertain
 
 
@@ -195,3 +201,42 @@ def reserved_first(reservations, lines):
         "usable": usable,
         "breach": outside > EPS and covered < usable - EPS,
     }
+
+
+def allocate_issues(reservations, lines):
+    """How much of each reservation has been issued, for ONE batch, warehouse and project.
+
+    reservations  [{"name", "roll_no", "reserved_qty", "creation"}] — Active and Fulfilled
+    lines         [{"roll_no", "qty", "creation"}] issues of that batch, from that warehouse,
+                  to that project
+
+    Only lines made after a reservation was created count towards it.
+      batch reservation (no roll)  every line counts
+      roll reservation             a line naming that roll counts in full; a line naming no
+                                   roll (batches often move as a whole, without roll numbers)
+                                   fills the project's roll reservations oldest first, up to
+                                   what each reserved. A line naming another roll counts
+                                   towards none of them.
+    Returns {name: issued_qty}.
+    """
+    issued = {r["name"]: 0.0 for r in reservations}
+    rolls = sorted((r for r in reservations if r.get("roll_no")), key=lambda r: r["creation"])
+    for r in reservations:
+        if not r.get("roll_no"):
+            issued[r["name"]] = sum(float(l["qty"] or 0) for l in lines if l["creation"] >= r["creation"])
+    for r in rolls:
+        issued[r["name"]] = sum(
+            float(l["qty"] or 0) for l in lines
+            if l.get("roll_no") == r["roll_no"] and l["creation"] >= r["creation"]
+        )
+    for l in sorted((l for l in lines if not l.get("roll_no")), key=lambda l: l["creation"]):
+        qty = float(l["qty"] or 0)
+        for r in rolls:
+            if qty <= EPS:
+                break
+            if r["creation"] > l["creation"]:
+                continue
+            take = min(qty, max(0.0, float(r["reserved_qty"] or 0) - issued[r["name"]]))
+            issued[r["name"]] += take
+            qty -= take
+    return issued

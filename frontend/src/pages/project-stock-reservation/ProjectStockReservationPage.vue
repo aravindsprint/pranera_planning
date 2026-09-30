@@ -247,7 +247,8 @@
                             <td>
                               {{ l.warehouse }}
                               <div v-if="l.rolls_uncertain" class="sub warn">
-                                Part of this batch left without roll numbers — some listed rolls may already be gone.
+                                Part of this batch left without roll numbers, so which rolls are still here is a guess.
+                                Link a Roll Wise Pick List on those Stock Entries to track rolls exactly.
                               </div>
                             </td>
                             <td class="num">{{ fmt(l.available_qty) }}</td>
@@ -322,7 +323,7 @@
           <template v-if="sec.key === 'produced'">
             Produced stock belongs to {{ data.project }}: another project can take it only once it is reserved for that project here.
             Stages come from the operation that made each batch (its Roll Packing List's job card, else its work order);
-            knitted rolls come from submitted Roll Packing Lists.
+            knitted rolls come from submitted Roll Packing Lists, and follow the Roll Wise Pick Lists linked on later Stock Entries.
           </template>
         </p>
         </section>
@@ -376,7 +377,7 @@
             />
             <p class="hint">{{ otherRollHint }}</p>
           </template>
-          <p v-if="rollsUncertain" class="hint warn">Part of this batch left without roll numbers — some listed rolls may already be gone.</p>
+          <p v-if="rollsUncertain" class="hint warn">Part of this batch left without roll numbers, so this roll list is a guess — check the roll tags before reserving.</p>
         </div>
 
         <div class="form-group">

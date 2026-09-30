@@ -70,7 +70,8 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation_math import (
-    EPS, allowed_issue_qty, clean_roll, place_packed_rolls, remaining_qty, reserved_first, same_project,
+    EPS, allocate_issues, allowed_issue_qty, clean_roll, place_packed_rolls, remaining_qty, reserved_first,
+    same_project,
 )
 
 ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", "Manufacture")
@@ -545,6 +546,30 @@ def get_stock_locations(batch_nos):
         if roll:
             loc["rolls"][roll] += flt(r.qty)
 
+    # A roll whose reservation is Fulfilled has been issued — even when the issue line named
+    # no roll — so it isn't in stores any more.
+    for r in frappe.get_all(
+        "Project Stock Reservation",
+        filters={"status": "Fulfilled", "batch_no": ["in", list(batch_nos)], "roll_no": ["is", "set"]},
+        fields=["batch_no", "roll_no"],
+    ):
+        seen[r.batch_no].add(clean_roll(r.roll_no))
+
+    # Rolls moved on a pick list follow their last move: into another stores warehouse, or
+    # out of stores (issued / at a subcontractor / in WIP).
+    for batch, moves in get_pick_list_moves(batch_nos).items():
+        last = {}
+        for m in moves:
+            last[m["roll_no"]] = m
+        locs = out.get(batch) or {}
+        for roll, m in last.items():
+            if roll in seen[batch]:
+                continue
+            seen[batch].add(roll)
+            wh = m["t_warehouse"]
+            if wh in locs and m["weight"] > EPS:
+                locs[wh]["rolls"][roll] += m["weight"]
+
     for batch, packed in get_packing_list_rolls(batch_nos).items():
         locs = out.get(batch) or {}
         room = {
@@ -585,6 +610,73 @@ def get_packing_list_rolls(batch_nos):
         if roll and (r.batch, roll) not in dup and flt(r.roll_weight) > 0:
             dup.add((r.batch, roll))
             out[r.batch].append((roll, flt(r.roll_weight), r.target))
+    return out
+
+
+PICK_LINK_FIELDS = ("custom_roll_wise_pick_list", "roll_wise_pick_list")
+
+
+def _pick_link_fields():
+    return [f for f in PICK_LINK_FIELDS if frappe.db.has_column("Stock Entry", f)]
+
+
+def get_pick_list_moves(batch_nos):
+    """{batch: [{"roll_no", "weight", "voucher", "s_warehouse", "t_warehouse"}]} in posting
+    order: rolls moved by submitted Stock Entries that carry a submitted Roll Wise Pick List
+    (Stock Entry.custom_roll_wise_pick_list / roll_wise_pick_list, or the pick list's own
+    stock_entry). The entry's line for that batch says where the rolls went; no target means
+    they were issued (consumed, or sent to a subcontractor's warehouse counts as a target
+    outside stores)."""
+    batch_nos = list({b for b in batch_nos if b})
+    if not batch_nos or not frappe.db.exists("DocType", "Roll Wise Pick List"):
+        return {}
+    picks = frappe.db.sql(
+        """SELECT pi.parent AS pick, pi.batch, pi.roll_no, pi.roll_weight, pi.qty, p.stock_entry
+           FROM `tabRoll Wise Pick Item` pi
+           JOIN `tabRoll Wise Pick List` p ON p.name = pi.parent AND p.docstatus = 1
+           WHERE pi.batch IN %(batches)s""",
+        {"batches": tuple(batch_nos)}, as_dict=True,
+    )
+    if not picks:
+        return {}
+    pick_names = tuple({x.pick for x in picks})
+    entries = {}                                   # entry name -> row, with .picks
+    for field in _pick_link_fields():
+        for e in frappe.db.sql(
+            f"""SELECT name, posting_date, posting_time, creation, `{field}` AS pick
+                FROM `tabStock Entry` WHERE docstatus = 1 AND `{field}` IN %(p)s""",
+            {"p": pick_names}, as_dict=True,
+        ):
+            entries.setdefault(e.name, e).setdefault("picks", set()).add(e.pick)
+    direct = {x.stock_entry for x in picks if x.stock_entry} - set(entries)
+    if direct:
+        for e in frappe.db.sql(
+            """SELECT name, posting_date, posting_time, creation FROM `tabStock Entry`
+               WHERE docstatus = 1 AND name IN %(n)s""", {"n": tuple(direct)}, as_dict=True,
+        ):
+            entries[e.name] = e
+            e["picks"] = {x.pick for x in picks if x.stock_entry == e.name}
+    if not entries:
+        return {}
+    lines = defaultdict(dict)                      # (entry, batch) -> {"s", "t"}
+    for parent, batch, s_wh, t_wh in frappe.db.sql(
+        """SELECT parent, batch_no, s_warehouse, t_warehouse FROM `tabStock Entry Detail`
+           WHERE parent IN %(e)s AND batch_no IN %(b)s""",
+        {"e": tuple(entries), "b": tuple(batch_nos)},
+    ):
+        lines[(parent, batch)] = {"s": s_wh, "t": t_wh}
+
+    out = defaultdict(list)
+    for name, e in sorted(entries.items(), key=lambda kv: (kv[1].posting_date, str(kv[1].posting_time), kv[1].creation)):
+        for x in picks:
+            roll = clean_roll(x.roll_no)
+            if x.pick not in e["picks"] or not roll or (name, x.batch) not in lines:
+                continue
+            line = lines[(name, x.batch)]
+            out[x.batch].append({
+                "roll_no": roll, "weight": flt(x.roll_weight) or flt(x.qty), "voucher": name,
+                "s_warehouse": line["s"], "t_warehouse": line["t"],
+            })
     return out
 
 
@@ -655,7 +747,33 @@ def get_issue_lines(batch_nos):
     )
     for l in lines:
         l.roll_no = clean_roll(l.roll_no)
-    return lines
+    return _split_by_pick_lists(lines, batch_nos)
+
+
+def _split_by_pick_lists(lines, batch_nos):
+    """An issue line naming no roll, on an entry whose pick list names the rolls for that
+    batch, becomes one line per picked roll (anything left over stays unnumbered)."""
+    if not any(not l.roll_no for l in lines):
+        return lines
+    picked = defaultdict(list)                     # (entry, batch) -> [(roll, weight)]
+    for batch, moves in get_pick_list_moves(batch_nos).items():
+        for m in moves:
+            picked[(m["voucher"], batch)].append((m["roll_no"], m["weight"]))
+    out = []
+    for l in lines:
+        rolls = picked.get((l.voucher, l.batch_no)) if not l.roll_no else None
+        if not rolls:
+            out.append(l)
+            continue
+        qty = flt(l.qty)
+        for roll, weight in rolls:
+            take = min(qty, weight)
+            if take > EPS:
+                out.append(frappe._dict(l, roll_no=roll, qty=take))
+                qty -= take
+        if qty > EPS:
+            out.append(frappe._dict(l, qty=qty))
+    return out
 
 
 def get_reservation_state(batch_nos, exclude=None, issue_lines=None, statuses=("Active",)):
@@ -663,9 +781,10 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None, statuses=("
 
     available     total in issuable warehouses
     locations     {warehouse: {"available", "rolls"}}, see get_stock_locations()
-    reservations  active ones, each with warehouse, roll_no, issued_qty (issued to its project
-                  from that warehouse — and roll, if it has one — since it was created) and
-                  remaining_qty.
+    reservations  each with warehouse, roll_no, issued_qty and remaining_qty. issued_qty is
+                  what was issued to its project from that batch and warehouse since it was
+                  created — for a roll reservation, lines naming that roll plus its share of
+                  lines naming no roll (see reservation_math.allocate_issues).
     `exclude` is a reservation name to leave out (used when validating that reservation).
     `statuses` defaults to Active only — the only ones that hold stock.
     """
@@ -673,9 +792,12 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None, statuses=("
     if not batch_nos:
         return {}
     locations = get_stock_locations(batch_nos)
+    # Active and Fulfilled always take part in working out what was issued against what, so
+    # an old issue can't be counted again against a newer reservation; only `statuses` are
+    # returned.
     reservations = frappe.get_all(
         "Project Stock Reservation",
-        filters={"status": ["in", list(statuses)], "batch_no": ["in", batch_nos]},
+        filters={"status": ["in", sorted(set(statuses) | {"Active", "Fulfilled"})], "batch_no": ["in", batch_nos]},
         fields=["name", "status", "batch_no", "warehouse", "roll_no", "production_project", "reserved_qty", "creation"],
     )
     lines = issue_lines if issue_lines is not None else get_issue_lines(batch_nos)
@@ -688,27 +810,31 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None, statuses=("
         }
         for b in batch_nos
     }
+    groups = defaultdict(list)
     for r in reservations:
-        if exclude and r.name == exclude:
+        groups[(r.batch_no, r.warehouse, (r.production_project or "").casefold())].append(r)
+    issued = {}
+    for (batch, wh, project), rs in groups.items():
+        issued.update(allocate_issues(
+            [{"name": r.name, "roll_no": clean_roll(r.roll_no), "reserved_qty": flt(r.reserved_qty), "creation": r.creation}
+             for r in rs],
+            [{"roll_no": l.roll_no, "qty": flt(l.qty), "creation": l.creation}
+             for l in lines
+             if l.batch_no == batch and l.warehouse == wh and same_project(l.project, rs[0].production_project)],
+        ))
+
+    for r in reservations:
+        if (exclude and r.name == exclude) or r.status not in statuses:
             continue
-        roll = clean_roll(r.roll_no)
-        issued = sum(
-            flt(l.qty) for l in lines
-            if l.batch_no == r.batch_no
-            and l.warehouse == r.warehouse
-            and (not roll or l.roll_no == roll)
-            and same_project(l.project, r.production_project)
-            and l.creation >= r.creation
-        )
         state[r.batch_no]["reservations"].append({
             "name": r.name,
             "status": r.status,
             "production_project": r.production_project,
             "warehouse": r.warehouse,
-            "roll_no": roll,
+            "roll_no": clean_roll(r.roll_no),
             "reserved_qty": flt(r.reserved_qty),
-            "issued_qty": issued,
-            "remaining_qty": remaining_qty(r.reserved_qty, issued),
+            "issued_qty": issued[r.name],
+            "remaining_qty": remaining_qty(r.reserved_qty, issued[r.name]),
         })
     return state
 
@@ -818,6 +944,40 @@ def _row_batches(row):
     return []
 
 
+def _row_roll_parts(doc, rows):
+    """{row.name: [(roll_no, qty)]} for the entry being saved: the row's own roll no., else
+    the rolls its Roll Wise Pick List names for that batch (draft or submitted), else one
+    unnumbered part."""
+    field = roll_field()
+    pick = next((doc.get(f) for f in PICK_LINK_FIELDS if doc.get(f)), None)
+    picked = defaultdict(list)
+    if pick and frappe.db.exists("DocType", "Roll Wise Pick List"):
+        for batch, roll, weight, qty in frappe.db.sql(
+            """SELECT pi.batch, pi.roll_no, pi.roll_weight, pi.qty FROM `tabRoll Wise Pick Item` pi
+               JOIN `tabRoll Wise Pick List` p ON p.name = pi.parent AND p.docstatus < 2
+               WHERE p.name = %s ORDER BY pi.idx""", pick,
+        ):
+            if clean_roll(roll):
+                picked[batch].append((clean_roll(roll), flt(weight) or flt(qty)))
+    out = {}
+    for row in rows:
+        qty = flt(row.transfer_qty or row.qty)
+        own = clean_roll(row.get(field))
+        if own or not picked.get(row.batch_no):
+            out[row.name] = [(own, qty)]
+            continue
+        parts = []
+        for roll, weight in picked[row.batch_no]:
+            take = min(qty, weight)
+            if take > EPS:
+                parts.append((roll, take))
+                qty -= take
+        if qty > EPS:
+            parts.append(("", qty))
+        out[row.name] = parts
+    return out
+
+
 def _check(doc):
     field = roll_field()
     rows = [
@@ -839,17 +999,17 @@ def _check(doc):
         return
 
     projects = line_projects(doc)
+    parts = _row_roll_parts(doc, rows)
     requested = defaultdict(float)          # (batch, warehouse, project) -> qty
     requested_roll = defaultdict(float)     # (batch, warehouse, roll, project) -> qty
     for row in rows:
         project = projects.get(row.name)
         if not project or (row.batch_no not in reserved_batches and row.batch_no not in owners):
             continue
-        qty = flt(row.transfer_qty or row.qty)
-        requested[(row.batch_no, row.s_warehouse, project)] += qty
-        roll = clean_roll(row.get(field))
-        if roll:
-            requested_roll[(row.batch_no, row.s_warehouse, roll, project)] += qty
+        for roll, qty in parts[row.name]:
+            requested[(row.batch_no, row.s_warehouse, project)] += qty
+            if roll:
+                requested_roll[(row.batch_no, row.s_warehouse, roll, project)] += qty
     if not requested:
         return
 
@@ -1032,13 +1192,14 @@ def _check_reserved_first(doc):
             "name": r.name, "batch_no": r.batch_no, "warehouse": r.warehouse, "roll_no": roll,
             "usable_qty": max(0.0, min(remaining.get(r.name, 0.0), on_hand)),
         })
+    parts = _row_roll_parts(doc, rows)
     for row in rows:
         key = ((projects.get(row.name) or "").casefold(), row.item_code)
         if key in groups:
-            groups[key]["lines"].append({
-                "batch_no": row.batch_no, "warehouse": row.s_warehouse,
-                "roll_no": clean_roll(row.get(field)), "qty": flt(row.transfer_qty or row.qty),
-            })
+            for roll, qty in parts[row.name]:
+                groups[key]["lines"].append({
+                    "batch_no": row.batch_no, "warehouse": row.s_warehouse, "roll_no": roll, "qty": qty,
+                })
 
     problems = []
     for (_project_key, item), g in groups.items():

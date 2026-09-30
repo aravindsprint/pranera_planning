@@ -1,7 +1,7 @@
 import unittest
 
 from pranera_planning.reservation_math import (
-    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, remaining_qty, reserved_first,
+    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, remaining_qty, reserved_first, allocate_issues,
     same_project,
 )
 
@@ -140,6 +140,19 @@ class TestReservationMath(unittest.TestCase):
         placed, _ = place_packed_rolls({"A": 0}, [("R1", 25, "A")])
         self.assertEqual(placed, {})
 
+    def test_rolls_left_out_for_lack_of_room_are_flagged(self):
+        packed = [(str(100 + i), 25, "A") for i in range(1, 21)]          # 20 rolls, 500 kg
+        placed, uncertain = place_packed_rolls({"A": 400}, packed)       # 100 kg left unnumbered
+        self.assertEqual(len(placed["A"]), 16)
+        self.assertEqual(uncertain, {"A"})
+
+    def test_fulfilled_rolls_are_left_out_exactly(self):
+        packed = [(str(100 + i), 25, "A") for i in range(1, 21)]
+        gone = {"101", "102", "103", "104"}
+        placed, uncertain = place_packed_rolls({"A": 400}, packed, seen=gone)
+        self.assertEqual(sorted(placed["A"]), [str(n) for n in range(105, 121)])
+        self.assertEqual(uncertain, set())
+
     def test_partly_issued_without_numbers_is_flagged(self):
         placed, uncertain = place_packed_rolls({"A": 30}, [("R1", 25, "A"), ("R2", 25, "A")])
         self.assertEqual(placed, {"A": {"R1": 25, "R2": 25}})
@@ -182,6 +195,34 @@ class TestReservationMath(unittest.TestCase):
         self.assertTrue(reserved_first(res, [{"batch_no": "G1", "warehouse": "Stores", "roll_no": "R1", "qty": 400}])["breach"])
         self.assertFalse(reserved_first(res, [{"batch_no": "G1", "warehouse": "Stores", "roll_no": "R4", "qty": 400}])["breach"])
         self.assertFalse(reserved_first(res, [{"batch_no": "G1", "warehouse": "Stores", "roll_no": "", "qty": 400}])["breach"])
+
+
+    # ── issues against reservations ──────────────────────────────────────────
+    def R(self, name, roll, qty, t=0):
+        return {"name": name, "roll_no": roll, "reserved_qty": qty, "creation": t}
+
+    def L(self, roll, qty, t=1):
+        return {"roll_no": roll, "qty": qty, "creation": t}
+
+    def test_unnumbered_issue_fills_roll_reservations_oldest_first(self):
+        res = [self.R(f"PSR-{n}", str(n), 25, t=n) for n in (101, 102, 103, 104)]
+        got = allocate_issues(res, [self.L("", 100, t=200)])            # your Send to Subcontractor
+        self.assertEqual(got, {"PSR-101": 25, "PSR-102": 25, "PSR-103": 25, "PSR-104": 25})
+        got = allocate_issues(res, [self.L("", 60, t=200)])
+        self.assertEqual(got, {"PSR-101": 25, "PSR-102": 25, "PSR-103": 10, "PSR-104": 0})
+
+    def test_numbered_issue_counts_only_for_its_roll(self):
+        res = [self.R("A", "101", 25), self.R("B", "102", 25)]
+        self.assertEqual(allocate_issues(res, [self.L("102", 25)]), {"A": 0, "B": 25})
+        self.assertEqual(allocate_issues(res, [self.L("999", 25)]), {"A": 0, "B": 0})
+
+    def test_issue_before_a_reservation_does_not_count_for_it(self):
+        res = [self.R("old", "101", 25, t=0), self.R("new", "102", 25, t=5)]
+        self.assertEqual(allocate_issues(res, [self.L("", 50, t=3)]), {"old": 25, "new": 0})
+
+    def test_batch_reservation_counts_every_line(self):
+        res = [self.R("yarn", "", 2000)]
+        self.assertEqual(allocate_issues(res, [self.L("", 500), self.L("R9", 100)]), {"yarn": 600})
 
 
 if __name__ == "__main__":

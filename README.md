@@ -146,6 +146,13 @@ GKF → Knitting, DKF → Dyeing, SKF → Finishing). Stages on the same step (s
 side and share their input. Produced batches can be reserved for another project from the same
 table.
 
+**Rolls on the move.** A Stock Entry that carries a submitted Roll Wise Pick List
+(`custom_roll_wise_pick_list` / `roll_wise_pick_list`, or the pick list's own `stock_entry`) says
+exactly which rolls it moved: those rolls follow it (into another stores warehouse, or out of
+stores), count against their own roll reservations, and are checked roll by roll when the entry is
+saved — even when the entry's rows name no roll. An issue with neither roll numbers nor a pick list
+fills the project's own roll reservations in that batch and warehouse, oldest first.
+
 **Knitted rolls.** Batches move on as a whole without roll numbers on the Stock Entry, so a
 batch's rolls come from its submitted Roll Packing Lists (roll no., weight). They are placed in
 the stores warehouse the batch sits in, preferring the one the linked Stock Entry delivered to;

@@ -145,5 +145,75 @@ class TestStockEntryChecks(unittest.TestCase):
         self.assertEqual(self.check([row("r1", "25PUR001/REL/1234", 500)], project="25PROD002"), "blocked")
 
 
+    # ── Roll Wise Pick List: the rolls it names count, even when the row names none ──
+    def _pick_world(self, picked_rolls):
+        """Greige batch G1 produced for 25PROD001: rolls R1 (25) and R4 (25) in Stores - PSS,
+        R4 reserved for 25PROD002. The entry's pick list names `picked_rolls`."""
+        R, f = self.R, self.frappe
+        saved = (R.get_reservation_state, R.get_produced_owners, f.db.sql, f.db.exists)
+        R.get_produced_owners = lambda batches: {"G1": "25PROD001"}
+        R.get_reservation_state = lambda batches, **kw: {"G1": {
+            "available": 50.0,
+            "locations": {"Stores - PSS": {"available": 50.0, "rolls": {"R1": 25.0, "R4": 25.0}}},
+            "reservations": [{"name": "PSR-R4", "status": "Active", "production_project": "25PROD002",
+                              "warehouse": "Stores - PSS", "roll_no": "R4", "reserved_qty": 25.0,
+                              "issued_qty": 0.0, "remaining_qty": 25.0}]}}
+        f.db.exists = lambda *a, **k: True
+        f.db.sql = lambda q, *a, **k: [("G1", r, 25.0, 25.0) for r in picked_rolls] if "Roll Wise Pick Item" in q else []
+        WORLD["Project Stock Reservation"] = lambda flt: (
+            ["G1"] if flt and flt.get("batch_no") else
+            [_dict(name="PSR-R4", production_project="25PROD002", item_code="GKF", batch_no="G1",
+                   warehouse="Stores - PSS", roll_no="R4")])
+        return saved
+
+    def _restore(self, saved):
+        self.R.get_reservation_state, self.R.get_produced_owners, self.frappe.db.sql, self.frappe.db.exists = saved
+        WORLD["Project Stock Reservation"] = lambda flt: [RESERVATION.batch_no] if flt and flt.get("batch_no") else [RESERVATION]
+
+    def _send(self, qty):
+        r = row("r1", "G1", qty, item="GKF")
+        d = entry([r])
+        d.stock_entry_type = "Send to Subcontractor"
+        d.custom_roll_wise_pick_list = "PICK/0001"
+        return d
+
+    def _run(self, d, project):
+        self.R.line_projects = lambda dd: {x.name: project for x in dd.items}
+        self.frappe.logged.clear()
+        try:
+            self.R.validate_stock_entry(d)
+            outcome = "allowed"
+        except ValidationError:
+            outcome = "blocked"
+        self.assertEqual(self.frappe.logged, [], "the check crashed")
+        return outcome
+
+    def test_pick_list_naming_a_roll_not_reserved_for_you_is_blocked(self):
+        saved = self._pick_world(["R1"])
+        try:
+            self.assertEqual(self._run(self._send(25), "25PROD002"), "blocked")
+        finally:
+            self._restore(saved)
+
+    def test_pick_list_naming_your_reserved_roll_is_allowed(self):
+        saved = self._pick_world(["R4"])
+        try:
+            self.assertEqual(self._run(self._send(25), "25PROD002"), "allowed")
+        finally:
+            self._restore(saved)
+
+    def test_past_issue_is_split_into_its_picked_rolls(self):
+        saved_moves = self.R.get_pick_list_moves
+        self.R.get_pick_list_moves = lambda batches: {"G1": [
+            {"roll_no": "R1", "weight": 25.0, "voucher": "STE-1", "s_warehouse": "Stores - PSS", "t_warehouse": "SUB - X"},
+            {"roll_no": "R2", "weight": 25.0, "voucher": "STE-1", "s_warehouse": "Stores - PSS", "t_warehouse": "SUB - X"}]}
+        try:
+            lines = [_dict(batch_no="G1", voucher="STE-1", roll_no="", qty=60.0, warehouse="Stores - PSS")]
+            split = self.R._split_by_pick_lists(lines, ["G1"])
+            self.assertEqual([(l.roll_no, l.qty) for l in split], [("R1", 25.0), ("R2", 25.0), ("", 10.0)])
+        finally:
+            self.R.get_pick_list_moves = saved_moves
+
+
 if __name__ == "__main__":
     unittest.main()

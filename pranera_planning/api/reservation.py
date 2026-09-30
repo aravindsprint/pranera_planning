@@ -127,7 +127,8 @@ def get_purchase_project_stock(project, item_group=None):
         "project_type": project_type,
         "project_status": project_status,
         "reserved_for": reserved_for,
-        "reserved_totals": _reserved_totals(reserved_for),
+        "reserved_totals": _reserved_totals([r for r in reserved_for if r["status"] == "Active"]),
+        "fulfilled_totals": _reserved_totals([r for r in reserved_for if r["status"] == "Fulfilled"]),
         "rows": rows,
         "totals": _totals(rows),
         "produced_rows": produced_rows,
@@ -320,8 +321,12 @@ def _reserved_for(project):
 
 
 def _reserved_totals(rows):
+    """Totals over reservation rows, plus how many there are. The page's cards use the
+    Active ones only — what is still held; Fulfilled ones are summarised separately."""
     keys = ("reserved_qty", "issued_qty", "remaining_qty", "in_stores_qty")
-    return {k: round(sum(r[k] for r in rows), 3) for k in keys}
+    out = {k: round(sum(r[k] for r in rows), 3) for k in keys}
+    out["count"] = len(rows)
+    return out
 
 
 def _locations(st, roll_tracked):

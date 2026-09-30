@@ -43,7 +43,13 @@
       <template v-else>
         <section v-if="data.reserved_for.length" class="section">
           <h2 class="section__h">Reserved for {{ data.project }}</h2>
-          <div class="stats">
+          <p class="section__sub">
+            Still held: {{ data.reserved_totals.count }} active reservation{{ data.reserved_totals.count === 1 ? '' : 's' }}.
+            <template v-if="data.fulfilled_totals.count">
+              {{ data.fulfilled_totals.count }} fulfilled ({{ fmt(data.fulfilled_totals.issued_qty) }} issued) {{ data.fulfilled_totals.count === 1 ? 'is' : 'are' }} listed below but not counted.
+            </template>
+          </p>
+          <div v-if="data.reserved_totals.count" class="stats">
             <div v-for="s in reservedStats" :key="s.label" class="stat">
               <div class="stat__v">{{ fmt(s.value) }}</div>
               <div class="stat__l">{{ s.label }}</div>
@@ -690,7 +696,8 @@ onMounted(() => {
 .form-label.other { margin-top: 12px; }
 .form-input.total { background: var(--slate-50, #f8fafc); font-weight: 600; }
 tr.done td { color: var(--slate-500); }
-.section__h { font-size: 16px; font-weight: 650; margin-bottom: 12px; }
+.section__h { font-size: 16px; font-weight: 650; margin-bottom: 4px; }
+.section__sub { font-size: 13px; color: var(--slate-500); margin-bottom: 12px; }
 .note { margin-top: 12px; font-size: 13px; color: var(--slate-500); max-width: 80ch; }
 
 .detail td { background: var(--slate-50); }

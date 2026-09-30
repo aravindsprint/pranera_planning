@@ -61,8 +61,8 @@ local bench with developer mode on, then commit the generated files.
 ## Stock reservation
 
 Page: `/planning-app/project-stock-reservation` (menu: Planning -> Stock Reservation). Pick a
-project (the Purchase / Production checkboxes filter the picker by Project Type; both ticked
-shows every type, unclassified included), see each batch received under it, and reserve
+project (the Purchase / Production choice filters the picker by Project Type, one type at a
+time; projects with no type set appear under neither), see each batch received under it, and reserve
 quantity for a production project. A reservation is a `Project Stock Reservation` document
 held at one stock location:
 

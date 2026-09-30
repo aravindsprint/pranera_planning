@@ -16,7 +16,7 @@
           </div>
           <div class="types" role="group" aria-label="Project type">
             <label v-for="t in PROJECT_TYPES" :key="t" class="check">
-              <input v-model="types[t]" type="checkbox" /> {{ t }}
+              <input v-model="projectType" type="radio" name="project-type" :value="t" /> {{ t }}
             </label>
           </div>
           <p class="hint">{{ typeHint }}</p>
@@ -428,24 +428,17 @@ import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'
 import { callMessage, updateDoc } from '@/api/frappe'
 
-// Only Projects that actually have a received batch — plain Project search would include
-// every project in the system, most of which never had anything bought under them and only
-// lead to "No stock received under this project" if picked here.
+// The picker only offers projects the page has something to show for (received, produced or
+// reserved stock), of ONE type at a time: Purchase or Production. Projects with no type set
+// appear under neither — set their Project Type.
 const PROJECT_TYPES = ['Purchase', 'Production']
-const types = reactive({ Purchase: true, Production: true })
-const selectedTypes = computed(() => PROJECT_TYPES.filter((t) => types[t]))
+const projectType = ref('Purchase')
 
-// Both ticked, or neither, means no type filter (unclassified projects included).
-const typeHint = computed(() => {
-  const t = selectedTypes.value
-  if (t.length === 1) return `Projects with received, produced or reserved stock, typed ${t[0]}.`
-  return 'Projects with received, produced or reserved stock, any type — including ones not yet classified.'
-})
+const typeHint = computed(() => `Projects typed ${projectType.value} with received, produced or reserved stock.`)
 
 async function searchProjects(txt) {
-  const t = selectedTypes.value
   return await callMessage('pranera_planning.api.reservation.search_purchase_projects', {
-    txt, project_types: t.length === 1 ? t : [],
+    txt, project_types: [projectType.value],
   })
 }
 
@@ -522,6 +515,8 @@ async function load() {
   error.value = ''
   try {
     data.value = await callMessage('pranera_planning.api.reservation.get_purchase_project_stock', { project: project.value })
+    // A project opened from a link or the URL switches the Purchase / Production choice to its type.
+    if (PROJECT_TYPES.includes(data.value?.project_type)) projectType.value = data.value.project_type
     router.replace({ query: { project: project.value } })
   } catch (e) {
     error.value = e.message

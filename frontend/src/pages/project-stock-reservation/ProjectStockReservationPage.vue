@@ -341,12 +341,14 @@
           </template>
           <p v-else class="hint">No numbered rolls on record in this warehouse.</p>
 
-          <label class="form-label other" for="other-roll">Roll not in the list</label>
-          <input
-            id="other-roll" v-model.trim="dlg.otherRoll" class="form-input" autocomplete="off"
-            placeholder="Type its roll no. (optional)"
-          />
-          <p class="hint">{{ otherRollHint }}</p>
+          <template v-if="unnumberedFree > 0 || dlg.otherRoll">
+            <label class="form-label other" for="other-roll">Roll not in the list</label>
+            <input
+              id="other-roll" v-model.trim="dlg.otherRoll" class="form-input" autocomplete="off"
+              placeholder="Type the roll no. from its tag (optional)"
+            />
+            <p class="hint">{{ otherRollHint }}</p>
+          </template>
           <p v-if="rollsUncertain" class="hint warn">Part of this batch left without roll numbers — some listed rolls may already be gone.</p>
         </div>
 
@@ -354,10 +356,15 @@
           <label class="form-label" for="prod">Reserve for project</label>
           <LinkField
             id="prod" v-model="dlg.production_project" doctype="Project" title-field="project_name"
-            :filters="[['Project', 'project_type', '=', 'Production'], ['Project', 'status', '=', 'Open'], ['Project', 'name', '!=', data.project]]"
+            :filters="[['Project', 'project_type', '=', 'Production'], ['Project', 'status', '=', 'Open']]"
             placeholder="Production project" empty-label="No open Production project found"
           />
-          <p class="hint">Open projects typed Production only, other than {{ data.project }}.</p>
+          <p class="hint">
+            Open projects typed Production only.
+            <template v-if="dlg.production_project && dlg.production_project === data.project">
+              Reserving {{ data.project }}'s own stock for itself keeps it from other projects and makes {{ data.project }} use it first.
+            </template>
+          </p>
         </div>
         <div class="form-group">
           <label class="form-label" for="qty">Quantity ({{ dlg.row.uom }})</label>
@@ -533,7 +540,7 @@ const dlgFree = computed(() => {
 
 const otherRollHint = computed(() => {
   const other = dlg.otherRoll
-  if (!other) return `Stock here with no roll no. on record: ${fmt(unnumberedFree.value)} free.`
+  if (!other) return `${fmt(unnumberedFree.value)} ${dlg.row.uom} here has no roll no. on record (no Roll Packing List yet) — type a roll's number from its tag to reserve it.`
   if (dlgRolls.value.some((x) => x.roll_no === other)) return `Roll ${other} is in the list above — tick it there instead.`
   return `Roll ${other} is reserved out of the ${fmt(unnumberedFree.value)} with no roll no. on record.`
 })
@@ -569,7 +576,7 @@ function openDialog(row, at = {}) {
     row,
     warehouse: at.warehouse || first?.warehouse || '',
     picked: {}, otherRoll: '', rollSearch: '',
-    production_project: '', remarks: '', saving: false, error: '',
+    production_project: defaultTarget(), remarks: '', saving: false, error: '',
   })
   if (at.roll_no) {
     if ((dlgLocation.value?.rolls || []).some((x) => x.roll_no === at.roll_no)) dlg.picked[at.roll_no] = true
@@ -578,6 +585,12 @@ function openDialog(row, at = {}) {
   syncQty()
 }
 function closeDialog() { dlg.row = null }
+
+// The page's own project, when stock can be reserved for it (an open Production project).
+function defaultTarget() {
+  const d = data.value
+  return d && d.project_type === 'Production' && d.project_status === 'Open' ? d.project : ''
+}
 
 async function save() {
   dlg.saving = true

@@ -121,8 +121,11 @@ def get_purchase_project_stock(project, item_group=None):
         b.made_by = None
     rows = _batch_rows(project, batches, "received_qty")
     produced_rows = _batch_rows(project, produced, "produced_qty")
+    project_type, project_status = frappe.db.get_value("Project", project, ["project_type", "status"]) or (None, None)
     return {
         "project": project,
+        "project_type": project_type,
+        "project_status": project_status,
         "reserved_for": reserved_for,
         "reserved_totals": _reserved_totals(reserved_for),
         "rows": rows,

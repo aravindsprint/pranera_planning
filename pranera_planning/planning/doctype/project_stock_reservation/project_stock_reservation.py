@@ -74,9 +74,6 @@ class ProjectStockReservation(Document):
         if purchase_type and purchase_type not in SOURCE_TYPES:
             frappe.throw(_("{0} is typed as {1}, not Purchase or Production — check you have the right project.").format(self.purchase_project, purchase_type))
 
-        if self.is_new() and same_project(self.production_project, self.purchase_project):
-            frappe.throw(_("This stock already belongs to {0} — reserve it for a different project.").format(self.production_project))
-
         if self.is_new():
             production_type, production_status = frappe.db.get_value(
                 "Project", self.production_project, ["project_type", "status"]

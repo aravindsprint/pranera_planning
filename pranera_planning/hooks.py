@@ -40,6 +40,10 @@ doc_events = {
     "Subcontracting Order": {
         "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
     },
+    "Roll Wise Pick List": {
+        "on_submit": "pranera_planning.reservation.refresh_from_pick_list",
+        "on_cancel": "pranera_planning.reservation.refresh_from_pick_list",
+    },
 }
 
 # Project.project_type (Link -> Project Type) is a STANDARD field, already on the form —

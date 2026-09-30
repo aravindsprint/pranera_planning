@@ -946,19 +946,29 @@ def _row_batches(row):
 
 def _row_roll_parts(doc, rows):
     """{row.name: [(roll_no, qty)]} for the entry being saved: the row's own roll no., else
-    the rolls its Roll Wise Pick List names for that batch (draft or submitted), else one
-    unnumbered part."""
+    the rolls its Roll Wise Pick List(s) name for that batch, else one unnumbered part.
+
+    A pick list counts (draft or submitted) when the entry links it — custom_roll_wise_pick_list
+    / roll_wise_pick_list — or when the pick list's own Stock Entry field points at this entry
+    (so the pick list can be made after saving the entry as a draft, before submitting it)."""
     field = roll_field()
-    pick = next((doc.get(f) for f in PICK_LINK_FIELDS if doc.get(f)), None)
+    picks = {doc.get(f) for f in PICK_LINK_FIELDS if doc.get(f)}
     picked = defaultdict(list)
-    if pick and frappe.db.exists("DocType", "Roll Wise Pick List"):
-        for batch, roll, weight, qty in frappe.db.sql(
-            """SELECT pi.batch, pi.roll_no, pi.roll_weight, pi.qty FROM `tabRoll Wise Pick Item` pi
-               JOIN `tabRoll Wise Pick List` p ON p.name = pi.parent AND p.docstatus < 2
-               WHERE p.name = %s ORDER BY pi.idx""", pick,
-        ):
-            if clean_roll(roll):
-                picked[batch].append((clean_roll(roll), flt(weight) or flt(qty)))
+    if frappe.db.exists("DocType", "Roll Wise Pick List"):
+        if doc.get("name") and not doc.get("__islocal"):
+            picks |= set(frappe.get_all("Roll Wise Pick List",
+                                        filters={"stock_entry": doc.name, "docstatus": ["<", 2]}, pluck="name"))
+        seen_rolls = set()
+        for pick in sorted(p for p in picks if p):
+            for batch, roll, weight, qty in frappe.db.sql(
+                """SELECT pi.batch, pi.roll_no, pi.roll_weight, pi.qty FROM `tabRoll Wise Pick Item` pi
+                   JOIN `tabRoll Wise Pick List` p ON p.name = pi.parent AND p.docstatus < 2
+                   WHERE p.name = %s ORDER BY pi.idx""", pick,
+            ):
+                roll = clean_roll(roll)
+                if roll and (batch, roll) not in seen_rolls:
+                    seen_rolls.add((batch, roll))
+                    picked[batch].append((roll, flt(weight) or flt(qty)))
     out = {}
     for row in rows:
         qty = flt(row.transfer_qty or row.qty)
@@ -1104,6 +1114,17 @@ def refresh_fulfilment(batch_nos, exclude_voucher=None):
                                     {"status": "Fulfilled", "fulfilled_on": frappe.utils.now_datetime()})
             elif r["status"] == "Fulfilled" and not done:
                 frappe.db.set_value("Project Stock Reservation", r["name"], {"status": "Active", "fulfilled_on": None})
+
+
+def refresh_from_pick_list(doc, method=None):
+    """doc_events hook: Roll Wise Pick List on_submit / on_cancel. A pick list submitted (or
+    cancelled) after its Stock Entry changes which rolls that entry issued, so recount the
+    reservations on its batches straight away."""
+    batches = {row.get("batch") for row in (doc.get("roll_wise_pick_item") or [])} | {doc.get("batch")}
+    batches.discard(None)
+    batches.discard("")
+    if batches:
+        refresh_fulfilment(batches)
 
 
 def refresh_all_fulfilment():

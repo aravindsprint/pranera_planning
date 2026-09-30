@@ -202,6 +202,22 @@ class TestStockEntryChecks(unittest.TestCase):
         finally:
             self._restore(saved)
 
+    def test_pick_list_pointing_at_the_entry_is_used_too(self):
+        # The entry has no pick list field set; the pick list's own Stock Entry field points at it.
+        saved = self._pick_world(["R1"])
+        pick_lists = WORLD.get("Roll Wise Pick List")
+        WORLD["Roll Wise Pick List"] = lambda flt: ["PICK/0010"] if flt and flt.get("stock_entry") == "MAT-STE-TEST" else []
+        try:
+            d = self._send(25)
+            d.custom_roll_wise_pick_list = None
+            self.assertEqual(self._run(d, "25PROD002"), "blocked")
+        finally:
+            self._restore(saved)
+            if pick_lists is None:
+                WORLD.pop("Roll Wise Pick List", None)
+            else:
+                WORLD["Roll Wise Pick List"] = pick_lists
+
     def test_past_issue_is_split_into_its_picked_rolls(self):
         saved_moves = self.R.get_pick_list_moves
         self.R.get_pick_list_moves = lambda batches: {"G1": [

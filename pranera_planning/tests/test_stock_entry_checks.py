@@ -52,6 +52,8 @@ def _fake_frappe():
     f.msgprint = lambda msg, title=None, indicator=None, alert=False: f.messages.append((title, msg))
     f.log_error = lambda title=None, message=None: f.logged.append((title, sys.exc_info()[1]))
     f.as_json = str
+    f.whitelist = lambda *a, **k: (a[0] if a and callable(a[0]) else (lambda fn: fn))
+    f.has_permission = lambda *a, **k: True
     f.get_all = lambda doctype, filters=None, fields=None, pluck=None, **kw: WORLD.get(doctype, lambda flt: [])(filters)
     f.db = types.SimpleNamespace(get_value=lambda *a, **k: None, sql=lambda *a, **k: [], exists=lambda *a, **k: True,
                                  has_column=lambda *a: True, escape=repr)

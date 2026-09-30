@@ -112,11 +112,17 @@
         <div v-if="sec.key === 'produced' && data.stages.length" class="table-wrap flow">
           <table class="data-table">
             <thead>
+              <tr class="group">
+                <th></th>
+                <th colspan="4" class="grp">Through the stage</th>
+                <th colspan="5" class="grp">Where its output is now</th>
+              </tr>
               <tr>
                 <th>Stage</th>
-                <th class="num" title="What the previous stage issued to this project">Input</th>
+                <th class="num" title="Main material issued to this stage's own work orders / subcontracting orders">Input</th>
+                <th class="num" title="Of the input, still being worked: in WIP, or at the subcontractor, on orders not yet completed">In process</th>
                 <th class="num">Produced</th>
-                <th class="num" title="Input minus produced: still being processed, or process loss">Difference</th>
+                <th class="num" title="Input − produced − in process. Includes anything left unconsumed on completed orders.">Loss</th>
                 <th class="num">In stores</th>
                 <th class="num">In WIP</th>
                 <th class="num">At subcontractor</th>
@@ -129,18 +135,28 @@
                 <td>
                   <div class="item">{{ g.stage }}</div>
                   <div class="sub">
-                    {{ g.batches }} batch{{ g.batches === 1 ? '' : 'es' }}
+                    {{ g.orders }} order{{ g.orders === 1 ? '' : 's' }} · {{ g.batches }} batch{{ g.batches === 1 ? '' : 'es' }}
                     <template v-if="g.shared_step"> · runs alongside {{ siblings(g) }}</template>
                   </div>
                 </td>
-                <td class="num" :title="g.shared_step ? 'Shared with the stages running alongside it' : ''">{{ g.input_qty ? fmt(g.input_qty) : '—' }}</td>
+                <td class="num">
+                  <template v-if="g.input_qty">{{ fmt(g.input_qty) }}</template>
+                  <template v-else-if="!g.other_input.length">—</template>
+                  <div v-for="o in g.other_input" :key="o.uom" :class="{ sub: g.input_qty }" title="Measured in another unit than the output, so no loss can be worked out from it">
+                    {{ fmt(o.qty) }} <span class="uom">{{ o.uom }}</span>
+                  </div>
+                </td>
+                <td class="num">
+                  <span :class="{ muted: !g.in_process_qty }">{{ fmt(g.in_process_qty) }}</span>
+                  <div v-for="o in g.other_input.filter((x) => x.in_process)" :key="o.uom" class="sub">{{ fmt(o.in_process) }} {{ o.uom }}</div>
+                </td>
                 <td class="num"><strong>{{ fmt(g.produced_qty) }}</strong> <span class="uom">{{ g.uom }}</span></td>
                 <td class="num">
-                  <template v-if="g.difference_qty !== null">
-                    {{ fmt(g.difference_qty) }}
-                    <span v-if="g.input_qty" class="sub">({{ pct(g.difference_qty, g.input_qty) }})</span>
+                  <template v-if="g.loss_qty !== null">
+                    <span :class="{ 'loss-bad': g.loss_qty > 0.05 * g.input_qty, 'loss-neg': g.loss_qty < -0.001 }">{{ fmt(g.loss_qty) }}</span>
+                    <span class="sub"> ({{ pct(g.loss_qty, g.input_qty) }})</span>
                   </template>
-                  <template v-else>—</template>
+                  <span v-else class="muted" :title="g.other_input.length ? 'Input and output are in different units' : 'No input recorded on this stage\'s orders'">—</span>
                 </td>
                 <td class="num">{{ fmt(g.in_stores_qty) }}</td>
                 <td class="num">{{ fmt(g.in_wip_qty) }}</td>
@@ -153,6 +169,11 @@
               </tr>
             </tbody>
           </table>
+          <p class="note">
+            Loss is input − produced − still in process; a negative loss means more came out than went in
+            (usually a unit or recording issue worth a look). Input in another unit than the output
+            — yarn kilos into collars counted in pieces — is shown but can't give a loss.
+          </p>
         </div>
 
         <div class="stats">
@@ -673,6 +694,10 @@ onMounted(() => {
 .muted { color: var(--slate-500); font-size: 13px; }
 .section + .section { margin-top: 32px; }
 .flow { margin-bottom: 16px; }
+.flow tr.group th { padding-bottom: 0; border-bottom: 0; }
+.flow th.grp { text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--slate-400); border-bottom: 1px solid var(--slate-200, #e2e8f0); }
+.loss-bad { color: #b91c1c; font-weight: 600; }
+.loss-neg { color: #b45309; font-weight: 600; }
 .level.ok { background: #dcfce7; color: #166534; }
 .sub.warn { color: #b45309; font-weight: 400; }
 .hint.warn { color: #b45309; }

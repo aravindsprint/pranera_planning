@@ -133,7 +133,7 @@ def get_purchase_project_stock(project, item_group=None):
         "totals": _totals(rows),
         "produced_rows": produced_rows,
         "produced_totals": _totals(produced_rows),
-        "stages": _stages(produced_rows, reserved_for, rows, project),
+        "stages": _stages(produced_rows, _order_flow(project)),
     }
 
 
@@ -224,55 +224,157 @@ def _batch_rows(project, batches, qty_field):
     return rows
 
 
-def _stages(produced_rows, reserved_for, received_rows, project):
-    """Per stage, in process order, what went in, what came out, and where the output is now.
+DONE_STATUSES = ("Completed", "Closed", "Cancelled")
+
+
+def _order_flow(project):
+    """{(step, stage, uom): {"input", "in_process", "orders", "other_input", "other_in_process"}}
+    from `project`'s own orders. uom is the output's unit: the same operation can make kilos
+    (fabric) or pieces (collars, cuffs), which must not be added together.
+
+    input       main material issued to the stage's orders: batch-tracked raw material in the
+                same unit as the order's output (yarn into knitting, greige into dyeing —
+                dyes and chemicals are issued separately at Pranera, and would be left out by
+                the unit / batch test anyway if not)
+                Work Order: max(transferred, consumed) - returned, per raw material
+                Subcontracting Order: supplied - returned
+    in_process  of that, still being worked — in WIP / at the subcontractor — on orders not
+                Completed / Closed: transferred (supplied) - consumed - returned
+    other_input / other_in_process  {uom: qty} for batch-tracked raw material in another
+                unit than the output (yarn kilos into collars counted in pieces): shown, but
+                no loss can be worked out from it.
+    A Work Order's stage is its last operation (else its item code prefix), the same as for
+    the batches it produces; a Subcontracting Order item's is its item code prefix.
+    """
+    flow = defaultdict(lambda: {"input": 0.0, "in_process": 0.0, "orders": set(),
+                                "other_input": defaultdict(float), "other_in_process": defaultdict(float)})
+
+    wos = frappe.db.sql(
+        """SELECT wo.name, wo.production_item, wo.status, i.item_group, i.stock_uom
+           FROM `tabWork Order` wo JOIN `tabItem` i ON i.name = wo.production_item
+           WHERE wo.project = %s AND wo.docstatus = 1""",
+        project, as_dict=True,
+    )
+    if wos:
+        names = tuple(w.name for w in wos)
+        last_op = {}
+        for parent, op in frappe.db.sql(
+            """SELECT parent, operation FROM `tabWork Order Operation`
+               WHERE parent IN %(n)s ORDER BY parent, idx""", {"n": names},
+        ):
+            last_op[parent] = op
+        items = defaultdict(list)
+        for r in frappe.db.sql(
+            """SELECT woi.parent, woi.transferred_qty, woi.consumed_qty, woi.returned_qty,
+                      i.has_batch_no, i.stock_uom
+               FROM `tabWork Order Item` woi JOIN `tabItem` i ON i.name = woi.item_code
+               WHERE woi.parent IN %(n)s""", {"n": names}, as_dict=True,
+        ):
+            items[r.parent].append(r)
+        for w in wos:
+            key = (stage_rank(w.production_item), stage_of(w.production_item, w.item_group, last_op.get(w.name)), w.stock_uom)
+            f = flow[key]
+            f["orders"].add(w.name)
+            open_order = w.status not in DONE_STATUSES
+            for r in items[w.name]:
+                if not r.has_batch_no:
+                    continue
+                t, c, ret = flt(r.transferred_qty), flt(r.consumed_qty), flt(r.returned_qty)
+                _add_flow(f, r.stock_uom == w.stock_uom, r.stock_uom, max(t, c) - ret,
+                          max(0.0, t - c - ret) if open_order else 0.0)
+
+    scos = frappe.db.sql(
+        """SELECT soi.name, soi.parent, soi.item_code, sco.status, i.item_group, i.stock_uom
+           FROM `tabSubcontracting Order Item` soi
+           JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1
+           JOIN `tabItem` i ON i.name = soi.item_code
+           LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
+           WHERE soi.project = %(p)s OR poi.project = %(p)s""",
+        {"p": project}, as_dict=True,
+    )
+    if scos:
+        supplied = defaultdict(list)
+        for r in frappe.db.sql(
+            """SELECT sosi.reference_name, sosi.supplied_qty, sosi.consumed_qty, sosi.returned_qty,
+                      i.has_batch_no, i.stock_uom
+               FROM `tabSubcontracting Order Supplied Item` sosi JOIN `tabItem` i ON i.name = sosi.rm_item_code
+               WHERE sosi.reference_name IN %(n)s""", {"n": tuple(x.name for x in scos)}, as_dict=True,
+        ):
+            supplied[r.reference_name].append(r)
+        for x in scos:
+            key = (stage_rank(x.item_code), stage_of(x.item_code, x.item_group), x.stock_uom)
+            f = flow[key]
+            f["orders"].add(x.parent)
+            open_order = x.status not in DONE_STATUSES
+            for r in supplied[x.name]:
+                if not r.has_batch_no:
+                    continue
+                sup, c, ret = flt(r.supplied_qty), flt(r.consumed_qty), flt(r.returned_qty)
+                _add_flow(f, r.stock_uom == x.stock_uom, r.stock_uom, sup - ret,
+                          max(0.0, sup - c - ret) if open_order else 0.0)
+    return flow
+
+
+def _add_flow(f, same_unit, uom, qty, in_process):
+    if same_unit:
+        f["input"] += qty
+        f["in_process"] += in_process
+    else:
+        f["other_input"][uom] += qty
+        f["other_in_process"][uom] += in_process
+
+
+def _stages(produced_rows, flow):
+    """Per stage, in process order: what went in, what is still being worked, what came
+    out, what was lost — and where the output is now.
 
     A stage is the operation that made the batches (Knitting, Collar Knitting, Dyeing, ...)
-    or, failing that, the item code prefix label. Stages are ordered by process step
-    (item code prefix: GKF, DKF, SKF, ...); stages on the same step run side by side —
-    Knitting, Collar Knitting and Cuff Knitting all take yarn.
+    or, failing that, the item code prefix label; stages are ordered by process step (item
+    code prefix GKF, DKF, SKF, ...). Stages on the same step run side by side.
 
-    input      what the previous step's batches issued to this project (first step: yarn
-               issued to it — its reservations plus its own purchases). Shown only when a
-               step has a single stage, since side-by-side stages share their input.
-    produced   output batches made for this project
-    difference input - produced: still being processed, or lost (process loss)
+    input       main material issued to the stage's own orders (see _order_flow)
+    in_process  of that, still in WIP / at the subcontractor on open orders
+    produced    output batches made for this project
+    loss        input - produced - in_process; also counts anything left unconsumed on
+                Completed / Closed orders
     """
     by_stage = defaultdict(list)
     for r in produced_rows:
-        by_stage[(r["stage_rank"], r["stage"])].append(r)
-    by_step = defaultdict(list)
-    for rank, label in by_stage:
-        by_step[rank].append(label)
+        by_stage[(r["stage_rank"], r["stage"], r["uom"])].append(r)
+    keys = sorted(set(by_stage) | {k for k, f in flow.items() if f["orders"]}, key=lambda k: (k[0], k[1], k[2] or ""))
+    steps, names = defaultdict(int), defaultdict(int)
+    for rank, label, _uom in keys:
+        steps[rank] += 1
+        names[(rank, label)] += 1
 
-    step_input = sum(x["issued_qty"] for x in reserved_for) + sum(r["used_own_qty"] for r in received_rows)
     out = []
-    for rank in sorted(by_step):
-        labels = sorted(by_step[rank])
-        shared = len(labels) > 1
-        step_used_own = 0.0
-        for label in labels:
-            rs = by_stage[(rank, label)]
-            produced = sum(r["received_qty"] for r in rs)
-            used_own = sum(r["used_own_qty"] for r in rs)
-            step_used_own += used_own
-            inp = None if shared or not step_input else round(step_input, 3)
-            out.append({
-                "stage": label,
-                "step": rank,
-                "shared_step": shared,
-                "batches": len(rs),
-                "uom": rs[0]["uom"],
-                "input_qty": inp,
-                "produced_qty": round(produced, 3),
-                "difference_qty": round(inp - produced, 3) if inp else None,
-                "in_stores_qty": round(sum(r["available_qty"] for r in rs), 3),
-                "in_wip_qty": round(sum(r["elsewhere"].get("In WIP", 0) for r in rs), 3),
-                "at_subcontractor_qty": round(sum(r["elsewhere"].get("At subcontractor", 0) for r in rs), 3),
-                "used_own_qty": round(used_own, 3),
-                "used_other_qty": round(sum(x["qty"] for r in rs for x in r["used_other"]), 3),
-            })
-        step_input = step_used_own
+    for key in keys:
+        rank, label, uom = key
+        rs = by_stage.get(key, [])
+        f = flow.get(key) or {"input": 0.0, "in_process": 0.0, "orders": set(), "other_input": {}, "other_in_process": {}}
+        produced = sum(r["received_qty"] for r in rs)
+        inp, in_process = f["input"], f["in_process"]
+        loss = inp - produced - in_process if inp > EPS else None
+        out.append({
+            # "Knitting (Pcs)" when the same operation also makes something in another unit
+            "stage": f"{label} ({uom})" if names[(rank, label)] > 1 and uom else label,
+            "step": rank,
+            "shared_step": steps[rank] > 1,
+            "batches": len(rs),
+            "orders": len(f["orders"]),
+            "uom": uom,
+            "input_qty": round(inp, 3) if inp > EPS else None,
+            "in_process_qty": round(in_process, 3),
+            "other_input": [{"uom": u, "qty": round(q, 3), "in_process": round(f["other_in_process"].get(u, 0.0), 3)}
+                            for u, q in sorted(f["other_input"].items()) if q > EPS],
+            "produced_qty": round(produced, 3),
+            "loss_qty": round(loss, 3) if loss is not None else None,
+            "in_stores_qty": round(sum(r["available_qty"] for r in rs), 3),
+            "in_wip_qty": round(sum(r["elsewhere"].get("In WIP", 0) for r in rs), 3),
+            "at_subcontractor_qty": round(sum(r["elsewhere"].get("At subcontractor", 0) for r in rs), 3),
+            "used_own_qty": round(sum(r["used_own_qty"] for r in rs), 3),
+            "used_other_qty": round(sum(x["qty"] for r in rs for x in r["used_other"]), 3),
+        })
     return out
 
 

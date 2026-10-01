@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-30 12:00:00.000000",
- "modified": "2026-09-30 12:00:00.000000",
+ "modified": "2026-10-01 14:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -20,7 +20,9 @@
   "column_break_mr",
   "check_help",
   "leftover_section",
-  "leftover_minimums"
+  "leftover_minimums",
+  "delivery_section",
+  "delivery_check"
  ],
  "fields": [
   {
@@ -64,6 +66,19 @@
    "fieldtype": "Table",
    "label": "Minimum per item group",
    "options": "Stock Reservation Leftover Minimum"
+  },
+  {
+   "fieldname": "delivery_section",
+   "fieldtype": "Section Break",
+   "label": "Deliveries"
+  },
+  {
+   "fieldname": "delivery_check",
+   "fieldtype": "Select",
+   "label": "Delivery check",
+   "options": "Block\nWarn\nOff",
+   "default": "Block",
+   "description": "Delivery Notes and stock-updating Sales Invoices: stock reserved for a Sales Order, or belonging to a made-to-order project, ships only against that order. Only affects stock of projects marked Made to order, or reserved for an order."
   }
  ],
  "permissions": [

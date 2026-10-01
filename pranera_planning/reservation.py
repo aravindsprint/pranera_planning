@@ -70,8 +70,8 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation_math import (
-    EPS, allocate_issues, allowed_issue_qty, clean_roll, deepest_minimum, location_summary, place_packed_rolls,
-    purchase_shortfall, remaining_qty, reserved_first, same_project, summarise_free_stock,
+    EPS, allocate_issues, allowed_issue_qty, clean_roll, deepest_minimum, delivery_allowed, location_summary, place_packed_rolls,
+    purchase_shortfall, remaining_qty, reservations_to_move, reserved_first, same_project, summarise_free_stock,
 )
 
 ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", "Manufacture")
@@ -730,6 +730,8 @@ def get_issue_lines(batch_nos):
     if not batch_nos:
         return []
     clause, values = _pool_clause("sbe.warehouse")
+    target_in_stores, tvalues = _pool_clause("sed.t_warehouse")
+    values.update(tvalues)
     values.update(batches=tuple(batch_nos), types=ENFORCED_TYPES)
     lines = frappe.db.sql(
         f"""SELECT sbe.batch_no, sbe.warehouse, {_roll_expr()} AS roll_no, {PROJECT_EXPR} AS project,
@@ -741,7 +743,9 @@ def get_issue_lines(batch_nos):
             LEFT JOIN `tabWork Order` wo ON wo.name = se.work_order
             WHERE sbe.batch_no IN %(batches)s AND sbe.qty < 0
               AND sbb.docstatus = 1 AND sbb.is_cancelled = 0 AND sbb.voucher_type = 'Stock Entry'
-              AND se.docstatus = 1 AND se.stock_entry_type IN %(types)s
+              AND se.docstatus = 1
+              AND (se.stock_entry_type IN %(types)s
+                   OR (se.purpose = 'Material Transfer' AND NOT (IFNULL(sed.t_warehouse, '') <> '' AND {target_in_stores})))
               AND {clause}""",
         values, as_dict=True,
     )
@@ -798,7 +802,7 @@ def get_reservation_state(batch_nos, exclude=None, issue_lines=None, statuses=("
     reservations = frappe.get_all(
         "Project Stock Reservation",
         filters={"status": ["in", sorted(set(statuses) | {"Active", "Fulfilled"})], "batch_no": ["in", batch_nos]},
-        fields=["name", "status", "batch_no", "warehouse", "roll_no", "production_project", "reserved_qty", "creation"],
+        fields=["name", "status", "batch_no", "warehouse", "roll_no", "production_project", "sales_order", "reserved_qty", "creation"],
     )
     lines = issue_lines if issue_lines is not None else get_issue_lines(batch_nos)
 
@@ -912,13 +916,47 @@ def line_projects(doc):
     return out
 
 
+def _issue_rows(doc):
+    """Rows of a Stock Entry that take stock out of stores for a project: every stores-source row
+    of the three production types, and the rows of a plain Material Transfer that go OUT of
+    stores (into WIP, a job worker's warehouse…). A transfer between stores warehouses is not
+    an issue — its reservations move with it (move_reservations)."""
+    rows = [row for row in doc.items
+            if row.batch_no and row.s_warehouse and not row.is_finished_item and is_pool_warehouse(row.s_warehouse)]
+    if doc.stock_entry_type in ENFORCED_TYPES:
+        return rows
+    if doc.get("purpose") == "Material Transfer":
+        return [r for r in rows if not r.t_warehouse or not is_pool_warehouse(r.t_warehouse)]
+    return []
+
+
+def is_checked_entry(doc):
+    return doc.stock_entry_type in ENFORCED_TYPES or doc.get("purpose") == "Material Transfer"
+
+
+def get_owners(batch_nos):
+    """{batch: project it belongs to}: produced for exactly one project (see "owner"), or —
+    for a made-to-order project — received under it: everything bought for a customer's
+    order is that order's, not shared stock."""
+    batch_nos = list({b for b in batch_nos if b})
+    owners = get_produced_owners(batch_nos) if protect_produced() else {}
+    if batch_nos and frappe.db.has_column("Project", "planning_order_type"):
+        for batch, project in frappe.db.sql(
+            """SELECT pri.batch_no, MAX(pri.project) FROM `tabPurchase Receipt Item` pri
+               JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
+               JOIN `tabProject` p ON p.name = pri.project AND p.planning_order_type = 'Made to order'
+               WHERE pri.batch_no IN %(b)s GROUP BY pri.batch_no""", {"b": tuple(batch_nos)}):
+            owners.setdefault(batch, project)
+    return owners
+
+
 def validate_stock_entry(doc, method=None):
     """doc_events hook: Stock Entry.validate.
 
     Only a deliberate ValidationError stops the entry. Any other failure in this module is
     logged and the entry is let through, so a bug here can never halt the shop floor.
     """
-    if not is_enabled() or doc.stock_entry_type not in ENFORCED_TYPES:
+    if not is_enabled() or not is_checked_entry(doc):
         return
     try:
         _check(doc)
@@ -990,10 +1028,7 @@ def _row_roll_parts(doc, rows):
 
 def _check(doc):
     field = roll_field()
-    rows = [
-        row for row in doc.items
-        if row.batch_no and row.s_warehouse and not row.is_finished_item and is_pool_warehouse(row.s_warehouse)
-    ]
+    rows = _issue_rows(doc)
     if not rows:
         return
     batches = list({r.batch_no for r in rows})
@@ -1004,7 +1039,7 @@ def _check(doc):
         filters={"status": "Active", "batch_no": ["in", batches]},
         pluck="batch_no",
     ))
-    owners = get_produced_owners(batches) if protect_produced() else {}
+    owners = get_owners(batches)
     if not reserved_batches and not owners:
         return
 
@@ -1012,14 +1047,22 @@ def _check(doc):
     parts = _row_roll_parts(doc, rows)
     requested = defaultdict(float)          # (batch, warehouse, project) -> qty
     requested_roll = defaultdict(float)     # (batch, warehouse, roll, project) -> qty
+    no_project = []
     for row in rows:
         project = projects.get(row.name)
-        if not project or (row.batch_no not in reserved_batches and row.batch_no not in owners):
+        if row.batch_no not in reserved_batches and row.batch_no not in owners:
+            continue
+        if not project:
+            if doc.stock_entry_type not in ENFORCED_TYPES:      # a transfer out of stores: say who it's for
+                no_project.append(_("<b>{0}</b> in {1} is reserved or belongs to a project — set the Project on this "
+                                    "Material Transfer (the project it is moved out of stores for).").format(row.batch_no, row.s_warehouse))
             continue
         for roll, qty in parts[row.name]:
             requested[(row.batch_no, row.s_warehouse, project)] += qty
             if roll:
                 requested_roll[(row.batch_no, row.s_warehouse, roll, project)] += qty
+    if no_project:
+        frappe.throw("<br>".join(no_project), title=_("Which project is this for?"))
     if not requested:
         return
 
@@ -1090,11 +1133,103 @@ def update_fulfilment(doc, method=None):
     cancel updates the entry and its batch bundles, it can still look submitted while this
     hook runs.
     """
-    if doc.stock_entry_type not in ENFORCED_TYPES:
+    if not is_checked_entry(doc):
         return
     batches = {b for row in doc.items if row.s_warehouse for b in _row_batches(row) if b}
     if batches:
         refresh_fulfilment(batches, exclude_voucher=doc.name if doc.docstatus == 2 else None)
+
+
+def move_reservations(doc, method=None):
+    """doc_events hook: Stock Entry on_submit. A plain Material Transfer between two stores
+    warehouses carries its reservations along: free stock moves first, then reserved stock
+    (oldest reservation first); a named roll — on the row or its Roll Wise Pick List — carries
+    its own. Each moved part becomes a new reservation at the target (Moved from / Moved by
+    set); the original is reduced, or Released when all of it moved. A failure is logged and
+    shown, never stops the transfer."""
+    if doc.get("purpose") != "Material Transfer" or doc.stock_entry_type in ENFORCED_TYPES:
+        return
+    try:
+        _move(doc)
+    except Exception:
+        frappe.log_error(title="Moving reservations with a Material Transfer failed")
+        frappe.msgprint(_("This transfer moved reserved stock, but its reservations could not be moved along — "
+                          "please check them on the Stock Reservation page and report it (Error Log)."),
+                        title=_("Reservations not moved"), indicator="orange")
+
+
+def _move(doc):
+    rows = [r for r in doc.items if r.batch_no and r.s_warehouse and r.t_warehouse and r.s_warehouse != r.t_warehouse
+            and is_pool_warehouse(r.s_warehouse) and is_pool_warehouse(r.t_warehouse)]
+    if not rows:
+        return
+    batches = {r.batch_no for r in rows}
+    if not frappe.db.exists("Project Stock Reservation", {"status": "Active", "batch_no": ["in", list(batches)]}):
+        return
+    parts = _row_roll_parts(doc, rows)
+    state = get_reservation_state(batches)                 # the stock has already moved (on_submit)
+    avail = defaultdict(float)                             # (batch, source) -> available before this transfer
+    for r in rows:
+        avail[(r.batch_no, r.s_warehouse)] += flt(r.transfer_qty or r.qty)
+    for (batch, wh) in list(avail):
+        avail[(batch, wh)] += flt(((state.get(batch) or {}).get("locations") or {}).get(wh, {}).get("available"))
+    remaining = {x["name"]: x["remaining_qty"] for st in state.values() for x in st["reservations"]}
+    for row in rows:
+        st = state.get(row.batch_no)
+        if not st:
+            continue
+        here = sorted((dict(x, remaining_qty=remaining[x["name"]]) for x in reservations_at(st, row.s_warehouse)
+                       if remaining[x["name"]] > EPS), key=lambda x: x["name"])
+        for roll, qty in parts[row.name]:
+            for name, q in reservations_to_move(avail[(row.batch_no, row.s_warehouse)], here, qty, roll or None):
+                _move_one(name, q, remaining[name], row.t_warehouse, doc)
+                remaining[name] -= q
+                for x in here:
+                    if x["name"] == name:
+                        x["remaining_qty"] -= q
+            avail[(row.batch_no, row.s_warehouse)] -= qty
+
+
+def _move_one(name, qty, remaining_before, target, doc):
+    orig = frappe.get_doc("Project Stock Reservation", name)
+    new = frappe.get_doc({
+        "doctype": "Project Stock Reservation", "purchase_project": orig.purchase_project,
+        "production_project": orig.production_project, "item_code": orig.item_code, "batch_no": orig.batch_no,
+        "warehouse": target, "roll_no": orig.roll_no, "sales_order": orig.get("sales_order"),
+        "reserved_qty": round(qty, 6), "moved_from": orig.name, "moved_by": doc.name,
+        "remarks": _("Moved from {0} by {1}").format(orig.warehouse, doc.name),
+    })
+    new.flags.moved = True
+    new.flags.ignore_permissions = True
+    new.insert()
+    note = _("{0:g} moved to {1} by {2} ({3})").format(qty, target, doc.name, new.name)
+    if qty >= remaining_before - EPS:
+        frappe.db.set_value("Project Stock Reservation", name, {
+            "status": "Released", "released_on": frappe.utils.now_datetime(),
+            "remarks": "\n".join(x for x in (orig.remarks, note) if x)})
+    else:
+        frappe.db.set_value("Project Stock Reservation", name, {
+            "reserved_qty": flt(orig.reserved_qty) - qty, "remarks": "\n".join(x for x in (orig.remarks, note) if x)})
+
+
+def restore_moved_reservations(doc, method=None):
+    """doc_events hook: Stock Entry on_cancel — undo move_reservations for this transfer."""
+    if doc.get("purpose") != "Material Transfer" or not frappe.db.has_column("Project Stock Reservation", "moved_by"):
+        return
+    for n in frappe.get_all("Project Stock Reservation", filters={"moved_by": doc.name},
+                            fields=["name", "moved_from", "reserved_qty", "status", "remarks"]):
+        if n.status == "Active":
+            frappe.db.set_value("Project Stock Reservation", n.name, {
+                "status": "Released", "released_on": frappe.utils.now_datetime(),
+                "remarks": "\n".join(x for x in (n.remarks, _("Transfer {0} cancelled").format(doc.name)) if x)})
+        o = frappe.db.get_value("Project Stock Reservation", n.moved_from, ["status", "reserved_qty", "remarks"], as_dict=True)
+        if not o:
+            continue
+        back = "\n".join(x for x in (o.remarks, _("Back from {0}: transfer {1} cancelled").format(n.name, doc.name)) if x)
+        if o.status == "Released" and doc.name in (o.remarks or ""):
+            frappe.db.set_value("Project Stock Reservation", n.moved_from, {"status": "Active", "released_on": None, "remarks": back})
+        else:
+            frappe.db.set_value("Project Stock Reservation", n.moved_from, {"reserved_qty": flt(o.reserved_qty) + flt(n.reserved_qty), "remarks": back})
 
 
 def refresh_fulfilment(batch_nos, exclude_voucher=None):
@@ -1400,10 +1535,7 @@ def _check_reserved_first(doc):
     if mode == "off":
         return
     field = roll_field()
-    rows = [
-        row for row in doc.items
-        if row.batch_no and row.s_warehouse and not row.is_finished_item and is_pool_warehouse(row.s_warehouse)
-    ]
+    rows = _issue_rows(doc)
     if not rows:
         return
     projects = line_projects(doc)
@@ -1475,3 +1607,108 @@ def _others(reservations, project):
         for r in reservations
         if r["remaining_qty"] > EPS and not same_project(r["production_project"], project)
     ) or "-"
+
+
+
+# ── deliveries: made-to-order stock ships only against its own Sales Order ─────────
+
+def delivery_mode():
+    """Stock Reservation Settings › Delivery check: block (default) / warn / off."""
+    try:
+        mode = (frappe.get_cached_doc("Stock Reservation Settings").get("delivery_check") or "Block").lower()
+    except Exception:
+        return "warn"
+    return mode if mode in ("block", "warn", "off") else "block"
+
+
+def check_delivery(doc, method=None):
+    """doc_events hook: Delivery Note / Sales Invoice validate.
+
+    A stores line may ship a batch only within what is free to it there: stock reserved for
+    a Sales Order (or a project) ships only against that order (or one of that project's),
+    and stock belonging to a made-to-order project — received or produced under it — ships
+    only against the project's own Sales Order. Returns, and invoices that don't update
+    stock, are left alone. A failure in the check itself never stops the document.
+    """
+    if not is_enabled() or doc.get("is_return"):
+        return
+    if doc.doctype == "Sales Invoice" and not doc.get("update_stock"):
+        return
+    mode = delivery_mode()
+    if mode == "off":
+        return
+    try:
+        problems = _delivery_problems(doc)
+    except frappe.ValidationError:
+        raise
+    except Exception:
+        frappe.log_error(title="Delivery check failed (document allowed through)")
+        frappe.msgprint(_("The made-to-order delivery check could not run, so this document was not checked. "
+                          "Please report it — details are in the Error Log."),
+                        title=_("Delivery check skipped"), indicator="orange")
+        return
+    if not problems:
+        return
+    message = "<br>".join(problems)
+    if mode == "warn":
+        frappe.msgprint(message, title=_("Stock held for another order"), indicator="orange")
+    else:
+        frappe.throw(message, title=_("Stock held for another order"))
+
+
+def _row_batch_qty(row):
+    if row.get("batch_no"):
+        return [(row.batch_no, flt(row.get("stock_qty")) or flt(row.qty) * (flt(row.get("conversion_factor")) or 1))]
+    if row.get("serial_and_batch_bundle"):
+        return [(e.batch_no, abs(flt(e.qty))) for e in frappe.get_all(
+            "Serial and Batch Entry", filters={"parent": row.serial_and_batch_bundle}, fields=["batch_no", "qty"]) if e.batch_no]
+    return []
+
+
+def _delivery_problems(doc):
+    so_field = "against_sales_order" if doc.doctype == "Delivery Note" else "sales_order"
+    wanted = defaultdict(float)                             # (batch, warehouse, sales order) -> qty
+    for row in doc.items:
+        if not row.get("warehouse") or not is_pool_warehouse(row.warehouse):
+            continue
+        for batch, qty in _row_batch_qty(row):
+            wanted[(batch, row.warehouse, row.get(so_field) or "")] += qty
+    if not wanted:
+        return []
+    batches = list({k[0] for k in wanted})
+    reserved = set(frappe.get_all("Project Stock Reservation", filters={"status": "Active", "batch_no": ["in", batches]},
+                                  pluck="batch_no"))
+    owners = get_owners(batches)
+    mto = {}
+    if owners and frappe.db.has_column("Project", "planning_order_type"):
+        mto = {p.name: p.sales_order for p in frappe.get_all(
+            "Project", filters={"name": ["in", list(set(owners.values()))], "planning_order_type": "Made to order"},
+            fields=["name", "sales_order"])}
+    owners = {b: p for b, p in owners.items() if p in mto}  # only made-to-order ownership limits a sale
+    if not reserved and not owners:
+        return []
+
+    orders = list({k[2] for k in wanted if k[2]})
+    so_project = dict(frappe.get_all("Sales Order", filters={"name": ["in", orders]}, fields=["name", "project"],
+                                     as_list=True)) if orders else {}
+    order_of_project = {so: p for p, so in mto.items() if so}
+    state = get_reservation_state(reserved) if reserved else {}
+    locations = get_stock_locations(batches)
+
+    problems = []
+    for (batch, wh, so), qty in wanted.items():
+        if batch not in reserved and batch not in owners:
+            continue
+        keys = {so, so_project.get(so), order_of_project.get(so)}
+        res = [{"key": r.get("sales_order") or r["production_project"], "remaining_qty": r["remaining_qty"]}
+               for r in (reservations_at(state[batch], wh) if batch in state else [])]
+        available = flt((locations.get(batch) or {}).get(wh, {}).get("available"))
+        allowed, free, own = delivery_allowed(available, res, keys, owners.get(batch))
+        if qty > allowed + EPS:
+            owner = owners.get(batch)
+            why = (_("it belongs to made-to-order project {0}, so it ships only against {1}").format(
+                       owner, mto.get(owner) or _("that project's Sales Order (none set yet)"))
+                   if owner and owner not in keys else _("the rest is reserved for another order or project"))
+            problems.append(_("<b>{0}</b> in {1}: shipping {2:g}{3}, but only {4:g} may go — {5}.").format(
+                batch, wh, qty, _(" against {0}").format(so) if so else _(" with no Sales Order"), allowed, why))
+    return problems

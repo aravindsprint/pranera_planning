@@ -6,6 +6,8 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 
 def execute():
+    for name in ("stock_reservation_override_role", "stock_reservation_leftover_minimum", "stock_reservation_settings"):
+        frappe.reload_doc("planning", "doctype", name, force=True)
     create_custom_fields({
         "Material Request": [{
             "fieldname": "reservation_override_reason",

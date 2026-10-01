@@ -5,6 +5,10 @@ import frappe
 
 
 def execute():
+    # Load the doctypes this patch uses straight from their files, whatever state an earlier,
+    # interrupted migrate left them in (child tables first).
+    for name in ("re_order_stage_lead", "re_order_group_rule", "re_order_season", "re_order_settings", "item_re_order_level"):
+        frappe.reload_doc("planning", "doctype", name, force=True)
     s = frappe.get_single("Re-order Settings")
     defaults = {"history_days": 90, "near_margin": 10, "default_safety_days": 5, "default_cover_days": 30,
                 "default_round_to": 1, "lead_history_months": 6, "stock_project_period": "Quarter",

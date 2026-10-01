@@ -53,3 +53,25 @@ def create_plan(payload):
     """Re-check stock and create everything; all or nothing."""
     frappe.only_for(PLANNERS)
     return planner.create(json.loads(payload) if isinstance(payload, str) else payload)
+
+
+@frappe.whitelist()
+def plan_defaults(project):
+    """Where the Plan tab starts for a project: made to order → its Sales Order's open lines
+    (else its saved plan); made to stock → its saved targets."""
+    frappe.has_permission("Project", "read", project, throw=True)
+    from pranera_planning.api.project_planning import order_type_of, project_info, saved_plan
+    p = project_info(project)
+    order_type = order_type_of(p)
+    plan = saved_plan(p)
+    out = {"order_type": order_type, "sales_order": None, "sales_order_info": None,
+           "needed_by": plan.get("needed_by"), "lines": []}
+    if order_type == planner.MTO and p.sales_order:
+        so = sales_order_lines(p.sales_order)
+        out.update(sales_order=p.sales_order, sales_order_info=so, needed_by=so.get("delivery_date") or out["needed_by"],
+                   lines=[{**ln, "mode": "need"} for ln in so["lines"]])
+    else:
+        default_mode = "need" if order_type == planner.MTO else "top_up"
+        out["lines"] = [{"item": ln["item"], "qty": flt(ln["qty"]), "mode": ln.get("mode") or default_mode,
+                         "label": _("saved plan")} for ln in plan.get("lines", [])]
+    return out

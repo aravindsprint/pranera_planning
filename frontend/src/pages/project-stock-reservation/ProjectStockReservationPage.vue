@@ -1,9 +1,9 @@
 <template>
-  <div class="page">
-    <AppHeader subtitle="Reserve stock bought for one project to another project's production" />
+  <div :class="{ page: !embedded }">
+    <AppHeader v-if="!embedded" subtitle="Reserve stock bought for one project to another project's production" />
 
-    <main class="page-content">
-      <div class="page-toolbar">
+    <main :class="embedded ? 'embedded' : 'page-content'">
+      <div v-if="!embedded" class="page-toolbar">
         <div class="picker">
           <label class="form-label" for="pp">Project</label>
           <div class="picker__row">
@@ -514,6 +514,13 @@ async function searchProjects(txt) {
 const route = useRoute()
 const router = useRouter()
 
+// Embedded as the Project Planning page's "Stock & reservations" tab: no header or picker of
+// its own; the page passes the project in, and links to other projects go back to the page.
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+  forProject: { type: String, default: '' },
+})
+const emit = defineEmits(['open-project'])
 const project = ref('')
 const data = ref(null)
 const loading = ref(false)
@@ -601,6 +608,10 @@ watch(project, (v) => {
 })
 
 function openProject(name) {
+  if (props.embedded) {
+    emit('open-project', name)
+    return
+  }
   project.value = name
   load()
 }
@@ -613,7 +624,7 @@ async function load() {
     data.value = await callMessage('pranera_planning.api.reservation.get_purchase_project_stock', { project: project.value })
     // A project opened from a link or the URL switches the Purchase / Production choice to its type.
     if (PROJECT_TYPES.includes(data.value?.project_type)) projectType.value = data.value.project_type
-    router.replace({ query: { project: project.value } })
+    if (!props.embedded) router.replace({ query: { project: project.value } })
   } catch (e) {
     error.value = e.message
     data.value = null
@@ -752,11 +763,20 @@ async function release(res) {
 }
 
 onMounted(() => {
-  if (typeof route.query.project === 'string' && route.query.project) {
+  if (!props.embedded && typeof route.query.project === 'string' && route.query.project) {
     project.value = route.query.project
     load()
   }
 })
+
+watch(() => props.forProject, (p) => {
+  if (props.embedded && p && p !== project.value) {
+    project.value = p
+    load()
+  } else if (props.embedded && p && !data.value) {
+    load()
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>

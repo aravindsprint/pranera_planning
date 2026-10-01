@@ -311,3 +311,63 @@ def deepest_minimum(group_bounds, minimums):
         if g_lft <= lft and g_rgt >= rgt and (best is None or g_lft > best[0]):
             best = (g_lft, float(qty or 0))
     return best[1] if best else 0.0
+
+
+def reservations_to_move(available_before, reservations, moved_qty, roll_no=None):
+    """Which reservations a transfer between stores warehouses carries along, and how much
+    of each. [(reservation name, qty)].
+
+    available_before  stock of the batch at the source warehouse before the transfer
+    reservations      Active ones there, oldest first: [{"name", "roll_no", "remaining_qty"}]
+    moved_qty         what this transfer takes out (of `roll_no`, when the line names a roll)
+
+    A named roll carries its own reservations with it. Otherwise free stock is taken first,
+    and only what goes beyond it is reserved stock — taken from the reservations oldest first.
+    """
+    moved = float(moved_qty or 0)
+    out = []
+    if moved <= EPS:
+        return out
+    if roll_no:
+        left = moved
+        for r in reservations:
+            if r.get("roll_no") == roll_no and left > EPS:
+                take = min(float(r["remaining_qty"] or 0), left)
+                if take > EPS:
+                    out.append((r["name"], take))
+                    left -= take
+        return out
+    total = sum(float(r["remaining_qty"] or 0) for r in reservations)
+    free = max(0.0, float(available_before or 0) - total)
+    left = max(0.0, moved - free)
+    for r in reservations:
+        if left <= EPS:
+            break
+        take = min(float(r["remaining_qty"] or 0), left)
+        if take > EPS:
+            out.append((r["name"], take))
+            left -= take
+    return out
+
+
+def delivery_allowed(available, reservations, keys, owner=None):
+    """How much of a batch at one warehouse a delivery line may ship. (allowed, free, own).
+
+    reservations  Active ones there: [{"key", "remaining_qty"}] — key = the reservation's Sales
+                  Order when it names one, else its project
+    keys          what the line is for: its Sales Order, that order's project, and any
+                  made-to-order project whose Sales Order it is
+    owner         the made-to-order project the batch belongs to, if any: its unreserved stock
+                  ships only for that project's order
+    """
+    keys = {str(k).casefold() for k in keys if k}
+    total = own = 0.0
+    for r in reservations:
+        rem = float(r.get("remaining_qty") or 0)
+        total += rem
+        if r.get("key") and str(r["key"]).casefold() in keys:
+            own += rem
+    free = max(0.0, float(available or 0) - total)
+    if owner and str(owner).casefold() not in keys:
+        return own, free, own
+    return free + own, free, own

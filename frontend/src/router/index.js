@@ -14,12 +14,14 @@ const routes = [
   { path: LOGIN, name: 'login', component: () => import('@/pages/login/LoginPage.vue'), meta: { public: true } },
   { path: `${APP_BASE}/no-access`, name: 'no-access', component: () => import('@/pages/NoAccessPage.vue'), meta: { noRoleCheck: true } },
 
-  ...pages.map((p) => ({
-    path: `${APP_BASE}/${p.path}`,
-    name: p.path,
-    component: p.component,
-    meta: { title: p.title, section: p.section },
-  })),
+  ...pages.map((p) => (p.redirect
+    ? { path: `${APP_BASE}/${p.path}`, name: p.path, redirect: p.redirect }
+    : {
+        path: `${APP_BASE}/${p.path}`,
+        name: p.path,
+        component: p.component,
+        meta: { title: p.title, section: p.section },
+      })),
 
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/pages/NotFoundPage.vue'), meta: { noRoleCheck: true } },
 ]

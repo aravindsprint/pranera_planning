@@ -59,17 +59,29 @@ def item_info(codes):
     return {i.name: i for i in frappe.get_all("Item", filters={"name": ["in", codes]}, fields=fields)}
 
 
-def bom_tree(codes, depth=10):
-    """({item: default BOM}, {item: [(input, qty per 1 unit)]}) down from `codes`; stock inputs only."""
+def bom_tree(codes, depth=10, chosen=None):
+    """({item: BOM}, {item: [(input, qty per 1 unit of good output)]}) down from `codes`;
+    stock inputs only. `chosen` {item: BOM} overrides the default BOM (an active, submitted
+    BOM of that item). A BOM's Process Loss % counts: 1,000 kg at 3% loss needs 1,000 ÷ 0.97
+    of input — only part of what goes in comes out good."""
+    chosen = {k: v for k, v in (chosen or {}).items() if k and v}
+    loss_field = ["process_loss_percentage"] if frappe.db.has_column("BOM", "process_loss_percentage") else []
     boms, rows, todo, seen = {}, {}, set(codes), set()
     for _d in range(depth):
         todo -= seen
         if not todo:
             break
         seen |= todo
+        picked = [chosen[i] for i in todo if i in chosen]
         found = {b.item: b for b in frappe.get_all(
-            "BOM", filters={"item": ["in", list(todo)], "is_default": 1, "is_active": 1, "docstatus": 1},
-            fields=["name", "item", "quantity"])}
+            "BOM", filters={"name": ["in", picked], "is_active": 1, "docstatus": 1},
+            fields=["name", "item", "quantity"] + loss_field)} if picked else {}
+        found = {i: b for i, b in found.items() if chosen.get(i) == b.name}
+        rest = [i for i in todo if i not in found]
+        if rest:
+            for b in frappe.get_all("BOM", filters={"item": ["in", rest], "is_default": 1, "is_active": 1, "docstatus": 1},
+                                    fields=["name", "item", "quantity"] + loss_field):
+                found.setdefault(b.item, b)
         todo = set()
         if not found:
             continue
@@ -83,7 +95,8 @@ def bom_tree(codes, depth=10):
                 lines[parent].append((code, flt(qty)))
         for item, b in found.items():
             boms[item] = b.name
-            per = flt(b.quantity) or 1.0
+            loss = min(max(flt(b.get("process_loss_percentage")), 0.0), 99.0)
+            per = (flt(b.quantity) or 1.0) * (1 - loss / 100)
             rows[item] = [(code, qty / per) for code, qty in lines[b.name]]
             todo |= {code for code, _q in rows[item]}
     return boms, rows
@@ -254,7 +267,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     settings = cfg["doc"]
     rules = scenario_rules(proj["project_type"], order_type)
     roots = [ln["item"] for ln in lines]
-    boms, rows = bom_tree(roots) if rules["explode"] else ({}, {})
+    boms, rows = bom_tree(roots, chosen=payload.get("boms")) if rules["explode"] else ({}, {})
     codes = set(roots) | {c for rs in rows.values() for c, _q in rs}
     info = item_info(codes)
     lots = free_lots(codes)
@@ -295,6 +308,15 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
 
     plan = build_plan(lines, data, rules)
     stage_rows = {(r.stage or "").strip().lower(): r for r in settings.stage_leads}
+    made_codes = [c for c in boms]
+    bom_options = defaultdict(list)
+    loss_of = {}
+    if made_codes:
+        lf = ["process_loss_percentage"] if frappe.db.has_column("BOM", "process_loss_percentage") else []
+        for b in frappe.get_all("BOM", filters={"item": ["in", made_codes], "is_active": 1, "docstatus": 1},
+                                fields=["name", "item", "is_default"] + lf, order_by="is_default desc, modified desc"):
+            bom_options[b.item].append(b.name)
+            loss_of[b.name] = flt(b.get("process_loss_percentage"))
     routes = (payload.get("routes") or {})
     chosen_services = (payload.get("services") or {})
     previous = last_service([r["item"] for r in plan["levels"] if r["made"]])
@@ -338,6 +360,8 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "how": [t for _q, t in r["how"]], "item_name": it.get("item_name"), "uom": it.get("stock_uom"),
                        "stage": stage or ("Bought" if not r["made"] else ""), "route": route,
                        "service": service if r["made"] else None, "service_options": options if r["made"] else [],
+                       "bom": boms.get(code) if r["made"] else None, "bom_options": bom_options.get(code, []) if r["made"] else [],
+                       "process_loss": loss_of.get(boms.get(code), 0.0) if r["made"] else 0.0,
                        "service_from": ("this item's last job work" if previous.get(code) == service and service else
                                         "the stage's most common" if service else ""),
                        "coming_from": come_src.get(code, []), "held": held_here,
@@ -387,6 +411,13 @@ def _create_one(prop):
             if customer and not frappe.db.get_value("Project", project, "customer"):
                 updates["customer"] = customer
         frappe.db.set_value("Project", project, updates)
+
+    if _has("Project", "saved_plan"):
+        frappe.db.set_value("Project", project, "saved_plan", json.dumps({
+            "saved_on": str(today()), "order_type": prop["order_type"], "needed_by": prop["needed_by"],
+            "sales_order": prop.get("sales_order"),
+            "lines": [{"item": ln["item"], "qty": flt(ln["qty"]), "mode": ln.get("mode") or "need"} for ln in prop["lines"]],
+        }))
 
     made_res = []
     for r in prop["reservations"]:

@@ -1,7 +1,8 @@
 import unittest
 
 from pranera_planning.reservation_math import (
-    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, purchase_shortfall, deepest_minimum, remaining_qty, reserved_first, summarise_free_stock, allocate_issues,
+    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, purchase_shortfall, deepest_minimum, remaining_qty, reserved_first,
+    reservations_to_move, delivery_allowed, summarise_free_stock, allocate_issues,
     same_project,
 )
 
@@ -274,6 +275,42 @@ class TestReservationMath(unittest.TestCase):
         self.assertEqual(deepest_minimum((30, 31), mins), 50)
         self.assertEqual(deepest_minimum((200, 201), mins), 0)
         self.assertEqual(deepest_minimum(None, mins), 0)
+
+
+    # ── reservations follow a transfer between stores ─────────────────────────
+    RES2 = [{"name": "PSR-1", "roll_no": "", "remaining_qty": 2000}, {"name": "PSR-2", "roll_no": "", "remaining_qty": 300}]
+
+    def test_free_stock_moves_first(self):
+        self.assertEqual(reservations_to_move(3000, self.RES2, 700), [])           # 700 free: nothing reserved moves
+
+    def test_beyond_free_takes_reservations_oldest_first(self):
+        self.assertEqual(reservations_to_move(3000, self.RES2, 1500), [("PSR-1", 800)])
+        self.assertEqual(reservations_to_move(3000, self.RES2, 3000), [("PSR-1", 2000), ("PSR-2", 300)])
+
+    def test_a_named_roll_carries_its_reservation(self):
+        res = [{"name": "PSR-R4", "roll_no": "R4", "remaining_qty": 25}, {"name": "PSR-R5", "roll_no": "R5", "remaining_qty": 25}]
+        self.assertEqual(reservations_to_move(500, res, 25, roll_no="R4"), [("PSR-R4", 25)])
+        self.assertEqual(reservations_to_move(500, res, 25, roll_no="R9"), [])
+
+
+    # ── deliveries of made-to-order stock ────────────────────────────────────
+    def test_unreserved_unowned_stock_ships_to_anyone(self):
+        self.assertEqual(delivery_allowed(500, [], {"SO-9"})[0], 500)
+
+    def test_stock_reserved_for_an_order_ships_only_to_it(self):
+        res = [{"key": "SO-1", "remaining_qty": 300}]
+        self.assertEqual(delivery_allowed(500, res, {"SO-9"})[0], 200)            # only the free part
+        self.assertEqual(delivery_allowed(500, res, {"SO-1"})[0], 500)
+        self.assertEqual(delivery_allowed(500, res, set())[0], 200)               # no Sales Order on the line
+
+    def test_reservation_for_a_project_ships_to_its_orders(self):
+        res = [{"key": "26PTIN1710", "remaining_qty": 300}]
+        self.assertEqual(delivery_allowed(300, res, {"SO-1", "26PTIN1710"})[0], 300)
+        self.assertEqual(delivery_allowed(300, res, {"SO-9", "26PTIN1645"})[0], 0)
+
+    def test_made_to_order_stock_ships_only_for_its_order(self):
+        self.assertEqual(delivery_allowed(400, [], {"SO-9"}, owner="26PTIN1710")[0], 0)
+        self.assertEqual(delivery_allowed(400, [], {"SO-1", "26PTIN1710"}, owner="26PTIN1710")[0], 400)
 
 
 if __name__ == "__main__":

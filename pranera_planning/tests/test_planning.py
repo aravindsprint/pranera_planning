@@ -32,6 +32,7 @@ class TestPropose(unittest.TestCase):
             sys.modules.pop(n, None)
         cls.P = importlib.import_module("pranera_planning.planner")
         cls.f = fake["frappe"]
+        cls.real_bom_tree = staticmethod(cls.P.bom_tree)
 
     @classmethod
     def tearDownClass(cls):
@@ -51,7 +52,14 @@ class TestPropose(unittest.TestCase):
                                    "rules": [], "round_to": 25}
         P.item_info = lambda codes: {c: _dict(name=c, item_name=c, item_group="G", stock_uom="Kgs",
                                               commercial_name="" if c.startswith("YR") else "2TF ECO 220") for c in codes}
-        P.bom_tree = lambda codes, depth=10: ({c: BOMS[c] for c in BOMS}, dict(ROWS))
+        def bom_tree(codes, depth=10, chosen=None):
+            rows = dict(ROWS)
+            boms = {c: BOMS[c] for c in BOMS}
+            if (chosen or {}).get(GKF) == "BOM-GKF-LOSS":          # an alternative greige BOM: 100% YRFPP090
+                rows[GKF] = [(YPP, 1.0)]
+                boms[GKF] = "BOM-GKF-LOSS"
+            return boms, rows
+        P.bom_tree = bom_tree
         P.last_service = lambda items: {SKF: "DRYER"}                      # this fabric last went to the dryer
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
             [("26PTIN1710", "Made to order"), ("25PUR001", ""), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
@@ -94,6 +102,33 @@ class TestPropose(unittest.TestCase):
         self.assertEqual(sorted((r["item_code"], r["qty"]) for r in req["Manufacture"]), [(DKF, 1962), (GKF, 1961)])
         self.assertEqual(sorted((r["item_code"], r["qty"]) for r in req["Purchase"]), [(YPP, 800), (YSP, 50)])
         self.assertEqual(p["warnings"], [])
+
+    def test_process_loss_raises_the_input_per_unit(self):
+        f, saved_all, saved_sql = self.f, self.f.get_all, self.f.db.sql
+        f.get_all = lambda doctype, filters=None, fields=None, **kw: (
+            [_dict(name="BOM-DKF", item=DKF, quantity=100, process_loss_percentage=3)]
+            if doctype == "BOM" and (filters or {}).get("item") else [])
+        f.db.sql = lambda q, v=None, **kw: [("BOM-DKF", GKF, 100.0, 1)]
+        try:
+            boms, rows = self.real_bom_tree([DKF], depth=1)
+        finally:
+            f.get_all, f.db.sql = saved_all, saved_sql
+        self.assertEqual(boms, {DKF: "BOM-DKF"})
+        self.assertAlmostEqual(rows[DKF][0][1], 100 / 97, places=6)          # 1,000 good needs 1,030.9 in
+
+    def test_a_chosen_bom_changes_the_plan(self):
+        P = self.P
+        P.free_lots = lambda codes: {}
+        P.held_for = lambda project, codes: {}
+        P.coming = lambda project, codes: ({}, {})
+        self.f.db.get_value = lambda dt, name, fields=None, **kw: _dict(name="26PTIN1710", project_name="26PTIN1710",
+                                                                         project_type="Production", status="Open", customer=None)
+        p = P.propose({"order_type": "Made to order", "project": "26PTIN1710", "lines": [{"item": GKF, "qty": 100}],
+                       "boms": {GKF: "BOM-GKF-LOSS"}})[0]
+        lv = {r["item"]: r for r in p["levels"]}
+        self.assertEqual(lv[GKF]["bom"], "BOM-GKF-LOSS")
+        self.assertEqual(lv[YPP]["need"], 100)
+        self.assertNotIn(YSP, lv)
 
     def test_mts_goes_to_the_family_project_and_uses_any_stock_projects_stock(self):
         P = self.P

@@ -19,8 +19,9 @@ class ProjectStockReservation(Document):
 
         self.validate_batch()
         self.validate_location()
-        self.validate_project_types()
-        self.validate_unique_active()
+        if not self.flags.get("moved"):          # a move continues an existing reservation
+            self.validate_project_types()
+            self.validate_unique_active()
         if self.status == "Active":
             self.validate_capacity()
         self.released_on = (self.released_on or now_datetime()) if self.status == "Released" else None

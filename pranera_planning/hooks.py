@@ -31,8 +31,14 @@ website_route_rules = [
 doc_events = {
     "Stock Entry": {
         "validate": "pranera_planning.reservation.validate_stock_entry",
-        "on_submit": "pranera_planning.reservation.update_fulfilment",
-        "on_cancel": "pranera_planning.reservation.update_fulfilment",
+        "on_submit": [
+            "pranera_planning.reservation.update_fulfilment",
+            "pranera_planning.reservation.move_reservations",
+        ],
+        "on_cancel": [
+            "pranera_planning.reservation.restore_moved_reservations",
+            "pranera_planning.reservation.update_fulfilment",
+        ],
     },
     "Work Order": {
         "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
@@ -43,6 +49,12 @@ doc_events = {
     "Material Request": {
         "validate": "pranera_planning.reservation.check_material_request",
         "before_submit": "pranera_planning.reservation.check_material_request",
+    },
+    "Delivery Note": {
+        "validate": "pranera_planning.reservation.check_delivery",
+    },
+    "Sales Invoice": {
+        "validate": "pranera_planning.reservation.check_delivery",
     },
     "Roll Wise Pick List": {
         "on_submit": "pranera_planning.reservation.refresh_from_pick_list",
@@ -71,4 +83,5 @@ scheduler_events = {
 after_install = [
     "pranera_planning.patches.setup_material_request_check.execute",
     "pranera_planning.patches.setup_planning_fields.execute",
+    "pranera_planning.patches.add_saved_plan_field.execute",
 ]

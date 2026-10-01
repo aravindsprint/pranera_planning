@@ -115,7 +115,7 @@
                 <td class="act">
                   <a
                     v-if="r.suggest_qty" class="link-btn primary"
-                    :href="`${APP_BASE}/plan?item=${encodeURIComponent(r.item_code)}&qty=${r.suggest_qty}&mode=make`"
+                    :href="`${APP_BASE}/project-planning?new=1&item=${encodeURIComponent(r.item_code)}&qty=${r.suggest_qty}&mode=make`"
                     title="Start a made-to-stock plan for the suggested quantity"
                   >Plan</a>
                 </td>

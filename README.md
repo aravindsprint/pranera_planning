@@ -246,3 +246,40 @@ Page `/planning-app/plan` (menu: Planning › Plan Project); `planner.py` + `pla
   (the one this item last used — stenter or dryer — else the stage's most common; switchable).
 - Create re-checks stock, then makes the project (made to stock), the reservations and the draft
   Material Requests — all or nothing. Project gets Order type / Stock family / Stock period fields.
+
+## Closing the known limits
+
+- **Deliveries** (Delivery Note, Sales Invoice with Update Stock; returns ignored): a stores line
+  may ship a batch only within what is free to it — stock reserved for a Sales Order ships only
+  against that order, stock reserved for a project only against that project's orders, and stock
+  belonging to a made-to-order project (received or produced under it) only against the
+  project's Sales Order. Stock Reservation Settings › Delivery check: Block / Warn / Off.
+- **Material Transfers out of stores** (to WIP, a job worker…) are issues: checked like one,
+  counted in Issued, and must name the Project when the stock is reserved or owned.
+- **Material Transfers between stores** carry their reservations along: free stock moves first,
+  then reserved stock oldest first; a named roll carries its own. The moved part becomes a new
+  reservation (Moved from / Moved by); cancelling the transfer puts it back.
+- **Made-to-order ownership** covers stock received under the project, not only produced.
+- **Plans**: each made level can use another active BOM (picker on the Plan page); a BOM's
+  Process Loss % counts (1,000 good at 3% loss needs 1,030.9 in).
+- **Integration tests** (`pranera_planning/integration_tests/test_flows.py`) run on a real site —
+  a COPY, never live: `bench --site <copy> set-config allow_tests true` then
+  `bench --site <copy> run-tests --module pranera_planning.integration_tests.test_flows`.
+
+## Project Planning page (one page, three tabs)
+
+`/planning-app/project-planning?project=<name>&tab=overview|plan|stock` (menu: Planning › Project
+Planning) replaces the separate Stock Reservation and Plan Project pages; their old addresses
+redirect to the right tab, so links and bookmarks keep working.
+
+- **Overview** (`api.project_planning.get_overview`): made to order → the Order panel (Ordered,
+  Ready = own free stock + what is held, In production = open orders and requests, Delivered, Not
+  planned); made to stock → the Stock programme (Target from the saved plan, Held, Reserved by
+  orders, Free now, In production, Free after plan). Totals, open Material Requests, and the stage
+  table with a Planned column.
+- **Plan**: the planner for this project (`api.plan.plan_defaults` loads its Sales Order's open
+  lines, or its saved targets). Create saves the plan's lines on the project (Project › Saved plan)
+  and opens its Overview.
+- **Stock & reservations**: the former Stock Reservation page, embedded.
+- **+ New plan** (`?new=1`, also the re-order report's Plan): made-to-stock lines that go to their
+  family projects; Create opens the first one.

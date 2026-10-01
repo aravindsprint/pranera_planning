@@ -1,3 +1,4 @@
+import { APP_BASE } from '@/config/app'
 // Single source of truth for pages. The router and the side-drawer menu are both
 // generated from this list, so adding a page is:
 //
@@ -22,21 +23,30 @@ export const pages = [
   },
 
   {
-    path: 'project-stock-reservation',
-    title: 'Stock Reservation',
-    icon: 'pi pi-lock',
+    path: 'project-planning',
+    title: 'Project Planning',
+    icon: 'pi pi-sitemap',
     section: 'Planning',
     nav: true,
-    component: () => import('@/pages/project-stock-reservation/ProjectStockReservationPage.vue'),
+    component: () => import('@/pages/project-planning/ProjectPlanningPage.vue'),
+  },
+
+  // The two pages that became tabs of Project Planning: old links and bookmarks land on the right tab.
+  {
+    path: 'project-stock-reservation',
+    title: 'Stock Reservation',
+    nav: false,
+    redirect: (to) => ({ path: `${APP_BASE}/project-planning`, query: { ...to.query, tab: 'stock' } }),
   },
 
   {
     path: 'plan',
     title: 'Plan Project',
-    icon: 'pi pi-sitemap',
-    section: 'Planning',
-    nav: true,
-    component: () => import('@/pages/plan/PlanPage.vue'),
+    nav: false,
+    redirect: (to) => ({
+      path: `${APP_BASE}/project-planning`,
+      query: to.query.project && !to.query.item ? { project: to.query.project, tab: 'plan' } : { ...to.query, new: '1' },
+    }),
   },
 
   {

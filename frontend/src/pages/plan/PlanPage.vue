@@ -1,14 +1,14 @@
 <template>
-  <div class="page">
-    <AppHeader subtitle="Check stock first, then create only what's missing" />
+  <div :class="{ page: !embedded }">
+    <AppHeader v-if="!embedded" subtitle="Check stock first, then create only what's missing" />
 
-    <main class="page-content">
+    <main :class="embedded ? 'embedded' : 'page-content'">
       <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
 
       <!-- ── 1 · start ─────────────────────────────────────────────────────── -->
       <section v-if="step === 'start'" class="stack">
         <div class="start-row">
-          <fieldset class="seg-field">
+          <fieldset v-if="!forProject" class="seg-field">
             <legend class="form-label">Order type</legend>
             <div class="seg">
               <button v-for="t in ORDER_TYPES" :key="t" type="button" :class="{ on: form.order_type === t }" @click="form.order_type = t">{{ t }}</button>
@@ -16,7 +16,7 @@
           </fieldset>
 
           <template v-if="form.order_type === MTO">
-            <div class="field wide">
+            <div v-if="!forProject" class="field wide">
               <label class="form-label" for="pl-project">Project</label>
               <LinkField id="pl-project" v-model="form.project" doctype="Project" :search-fn="searchProjects"
                          placeholder="The order's project" empty-label="No open Production or Purchase project found" />
@@ -149,6 +149,13 @@
                   <td class="num"><b>{{ fmt(r.request) }}</b></td>
                   <td class="cover">
                     <template v-if="r.made">
+                      <div v-if="r.bom_options.length" class="sub bom">
+                        BOM
+                        <select class="svc" :value="r.bom" :aria-label="`BOM for ${r.item}`" @change="setBom(r.item, $event.target.value)">
+                          <option v-for="b in r.bom_options" :key="b" :value="b">{{ b }}</option>
+                        </select>
+                        <span v-if="r.process_loss"> · {{ fmt(r.process_loss, 2) }}% process loss</span>
+                      </div>
                       <div class="seg small">
                         <button type="button" :class="{ on: r.route !== 'Job work' }" @click="setRoute(r.item, 'In-house')">In-house</button>
                         <button type="button" :class="{ on: r.route === 'Job work' }" @click="setRoute(r.item, 'Job work')">Job work</button>
@@ -212,7 +219,7 @@
             <b>{{ m.lines }} {{ m.lines === 1 ? 'line' : 'lines' }}</b>
           </div>
           <div class="actions">
-            <a class="btn btn-primary" :href="`${APP_BASE}/project-stock-reservation?project=${encodeURIComponent(c.project)}`">Open {{ c.project }} in Stock Reservation</a>
+            <a class="btn btn-primary" :href="`${APP_BASE}/project-planning?project=${encodeURIComponent(c.project)}&tab=overview`">Open {{ c.project }}</a>
           </div>
         </div>
         <div class="actions"><button class="btn btn-outline" @click="reset">Plan another</button></div>
@@ -222,7 +229,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'
@@ -234,7 +241,16 @@ const MTS = 'Made to stock'
 const ORDER_TYPES = [MTO, MTS]
 const route = useRoute()
 
-const blank = () => ({ order_type: MTO, project: '', sales_order: '', needed_by: '', lines: [{ item: '', qty: null, mode: 'need' }], routes: {}, services: {} })
+// Embedded as the Project Planning page's "Plan" tab (forProject set) or its "New plan" view
+// (embedded, no project: made to stock). On Create it tells the page which project to open.
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+  forProject: { type: String, default: '' },
+  prefill: { type: Object, default: null },
+})
+const emit = defineEmits(['created'])
+
+const blank = () => ({ order_type: MTO, project: '', sales_order: '', needed_by: '', lines: [{ item: '', qty: null, mode: 'need' }], routes: {}, services: {}, boms: {} })
 const form = reactive(blank())
 const step = ref('start')
 const proposals = ref([])
@@ -286,7 +302,7 @@ function payload() {
     sales_order: form.order_type === MTO ? form.sales_order : null, needed_by: form.needed_by || null,
     lines: form.lines.filter((l) => l.item && l.qty > 0)
       .map((l) => ({ item: l.item, qty: l.qty, mode: form.order_type === MTS ? l.mode : 'need', label: l.label })),
-    routes: form.routes, services: form.services,
+    routes: form.routes, services: form.services, boms: form.boms,
   }
 }
 async function check() {
@@ -303,6 +319,7 @@ async function check() {
 }
 function setRoute(item, r) { form.routes[item] = r; check() }
 function setService(item, s) { form.services[item] = s; check() }
+function setBom(item, b) { form.boms[item] = b; check() }
 function groupReservations(list) {
   const g = new Map()
   for (const r of list) {
@@ -318,6 +335,7 @@ async function create() {
   try {
     created.value = await callMessage('pranera_planning.api.plan.create_plan', { payload: payload() })
     step.value = 'created'
+    if (props.embedded && created.value.length) emit('created', created.value)
   } catch (e) {
     error.value = e.message
   } finally {
@@ -325,9 +343,35 @@ async function create() {
   }
 }
 
+async function loadDefaults(project) {
+  // The project's own plan: made to order → its Sales Order's open lines; made to stock → its saved targets.
+  busy.value = true
+  error.value = ''
+  try {
+    const d = await callMessage('pranera_planning.api.plan.plan_defaults', { project })
+    reset()
+    form.order_type = d.order_type
+    form.project = d.order_type === MTO ? project : ''
+    form.sales_order = d.sales_order || ''
+    form.needed_by = d.needed_by || ''
+    if (d.lines.length) form.lines = d.lines.map((l) => ({ item: l.item, qty: l.qty, mode: l.mode, label: l.label }))
+    if (d.sales_order) soInfo.value = d.sales_order_info
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    busy.value = false
+  }
+}
+
+watch(() => props.forProject, (p) => { if (props.embedded && p) loadDefaults(p) }, { immediate: true })
+
 onMounted(() => {
-  // From the re-order report's Plan button: ?item=…&qty=…&mode=make
-  const q = route.query
+  if (props.embedded && !props.forProject) {
+    form.order_type = MTS
+    form.lines = [{ item: '', qty: null, mode: 'top_up' }]
+  }
+  // From the re-order report's Plan button: ?item=…&qty=…&mode=make (or the page's prefill)
+  const q = props.prefill || route.query
   if (q.item) {
     form.order_type = q.order_type === MTO ? MTO : MTS
     form.lines = [{ item: String(q.item), qty: Number(q.qty) || null, mode: q.mode === 'top_up' ? 'top_up' : 'make', label: 'from the re-order report' }]
@@ -373,6 +417,7 @@ onMounted(() => {
 .orange { color: #9a3412; }
 .cover { min-width: 260px; }
 .cover .sub { margin-top: 4px; }
+.bom { margin: 0 0 6px; }
 .svc { font: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid var(--slate-200); border-radius: 6px; }
 .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .kv { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; padding: 4px 0; }

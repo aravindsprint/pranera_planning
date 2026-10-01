@@ -40,6 +40,10 @@ doc_events = {
     "Subcontracting Order": {
         "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
     },
+    "Material Request": {
+        "validate": "pranera_planning.reservation.check_material_request",
+        "before_submit": "pranera_planning.reservation.check_material_request",
+    },
     "Roll Wise Pick List": {
         "on_submit": "pranera_planning.reservation.refresh_from_pick_list",
         "on_cancel": "pranera_planning.reservation.refresh_from_pick_list",
@@ -59,5 +63,12 @@ fixtures = [
 scheduler_events = {
     "daily": [
         "pranera_planning.reservation.refresh_all_fulfilment",
+        "pranera_planning.reorder.recalculate_all",
     ],
 }
+
+# A fresh install marks every patch as already run, so run the one-off setup directly too.
+after_install = [
+    "pranera_planning.patches.setup_material_request_check.execute",
+    "pranera_planning.patches.setup_planning_fields.execute",
+]

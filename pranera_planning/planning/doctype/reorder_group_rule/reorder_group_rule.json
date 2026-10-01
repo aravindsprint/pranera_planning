@@ -1,0 +1,71 @@
+{
+ "actions": [],
+ "creation": "2026-09-30 18:00:00.000000",
+ "modified": "2026-09-30 18:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Re-order Group Rule",
+ "istable": 1,
+ "editable_grid": 1,
+ "permissions": [],
+ "fields": [
+  {
+   "fieldname": "item_group",
+   "label": "Item Group",
+   "fieldtype": "Link",
+   "options": "Item Group",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Applies to this group and every group under it, unless a lower group has its own rule."
+  },
+  {
+   "fieldname": "demand_basis",
+   "label": "Demand from",
+   "fieldtype": "Select",
+   "options": "Sales\nConsumption\nSales + Consumption",
+   "default": "Sales + Consumption",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "safety_days",
+   "label": "Safety days",
+   "fieldtype": "Float",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cover_days",
+   "label": "Cover days",
+   "fieldtype": "Float",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "round_to",
+   "label": "Round up to",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "description": "e.g. 25 for 25 kg rolls or a supplier's minimum."
+  },
+  {
+   "fieldname": "bought_lead_days",
+   "label": "Lead days when bought",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "description": "For items this group buys, when the Item has no Lead Time Days of its own."
+  }
+ ],
+ "field_order": [
+  "item_group",
+  "demand_basis",
+  "safety_days",
+  "cover_days",
+  "round_to",
+  "bought_lead_days"
+ ]
+}

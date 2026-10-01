@@ -6,6 +6,7 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation import (
+    batch_items, free_stock,
     get_batch_operations, get_elsewhere_qty, get_issue_lines, get_produced_batches,
     get_reservation_state, reservations_at, roll_tracked_items, stage_of, stage_rank,
 )
@@ -127,6 +128,7 @@ def get_purchase_project_stock(project, item_group=None):
         "project_type": project_type,
         "project_status": project_status,
         "reserved_for": reserved_for,
+        "requests": _open_purchase_requests(project),
         "reserved_totals": _reserved_totals([r for r in reserved_for if r["status"] == "Active"]),
         "fulfilled_totals": _reserved_totals([r for r in reserved_for if r["status"] == "Fulfilled"]),
         "rows": rows,
@@ -376,6 +378,32 @@ def _stages(produced_rows, flow):
             "used_other_qty": round(sum(x["qty"] for r in rs for x in r["used_other"]), 3),
         })
     return out
+
+
+def _open_purchase_requests(project):
+    """The project's submitted Purchase Material Request lines for batch-tracked stock items
+    (yarn, fabric — not services) that are not fully ordered yet, each with the stock free
+    to reserve instead (see reservation.free_stock)."""
+    lines = frappe.db.sql(
+        """SELECT mr.name AS request, mr.transaction_date, mr.schedule_date, mri.item_code, mri.item_name,
+                  mri.stock_uom AS uom, mri.stock_qty, mri.ordered_qty
+           FROM `tabMaterial Request Item` mri
+           JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mr.docstatus = 1
+            AND mr.material_request_type = 'Purchase' AND mr.status NOT IN ('Stopped', 'Cancelled')
+           WHERE mri.project = %s AND mri.ordered_qty < mri.stock_qty - 0.001
+           ORDER BY mr.transaction_date DESC, mr.name""",
+        project, as_dict=True,
+    )
+    items = batch_items([l.item_code for l in lines])
+    lines = [l for l in lines if l.item_code in items]
+    if not lines:
+        return []
+    stock = free_stock(items, for_project=project)
+    return [{
+        **l,
+        "pending_qty": round(flt(l.stock_qty) - flt(l.ordered_qty), 3),
+        "free": stock.get(l.item_code),
+    } for l in lines]
 
 
 def _reserved_for(project):

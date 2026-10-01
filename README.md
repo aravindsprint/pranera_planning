@@ -123,6 +123,21 @@ Issuing more than is reserved is fine once the reserved stock is all being used;
 whose stock is no longer at its location is not insisted on. Site config
 `project_stock_reservation_use_reserved_first`: `"block"` (default), `"warn"` or `"off"`.
 
+**Free stock before buying.** A Purchase Material Request may ask, per batch-tracked item and
+project, for at most *requested − free stock*: stock of that item free to reserve for that project
+right now (its own free stock, other projects' purchased stock, stock with no project — not stock
+produced for another project). Reserve the free stock on the Stock Reservation page first; it then
+stops counting as free. Saving shows an orange notice with the free stock (linked to its projects)
+and the most the request can ask for; submitting is refused in Block mode.
+
+Configured in **Stock Reservation Settings** (desk):
+- *Free stock check*: Block (default) / Warn / Off.
+- *Roles that may override*: users with any of these roles can submit anyway by filling in
+  *Override reason* on the Material Request; the reason is added as a comment. Starts as
+  Purchase Manager; change it any time.
+- *Minimum per item group*: free stock below this (e.g. YARN 25 kg) doesn't count, so small
+  leftovers don't block a purchase. The nearest group above an item decides.
+
 **Fulfilled.** A reservation becomes `Fulfilled` automatically when everything reserved has
 been issued (checked on every Stock Entry submit of the enforced types), and goes back to
 `Active` if cancelling an entry reopens it. The `mark_fulfilled_reservations` patch catches up
@@ -180,3 +195,54 @@ or on a bench with `allow_tests` enabled:
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md).
+
+
+## Re-order levels (step 1 of planning)
+
+`reorder.py` works out, per item, a min–max re-order level nightly (scheduler) and on demand
+(Re-order Settings › Recalculate now), and stores it in **Item Re-order Level** (one record per item).
+Formulas: `reorder_math.py`.
+
+- **Demand** over *History (days)*: Sales Invoices that update stock + Delivery Notes (returns
+  subtract), and consumption = Material Transfer for Manufacture / Manufacture / Send to
+  Subcontractor lines out of stores warehouses. Read from the documents (under 1 s on live; the
+  stock ledger took 38 s).
+- **Lead days** = the item's stage *Days used* + every stage below it down its default BOMs to its
+  bought material (finished fabric = finishing 3 + dyeing 7 + knitting 5). A bought item's own
+  supplier lead days (Item › Lead Time Days, else the group rule) count for that item only, unless
+  *Include bought materials' lead days* is ticked. Learned medians (Work Orders, Subcontracting
+  Orders) are shown beside Days used as a guide; they're used only where Days used is empty and
+  *Use learned days* is ticked — on live they include waiting time.
+- **Per item group** (nearest group above the item wins): safety days, cover days, round up to,
+  demand basis, bought lead days.
+- **Position** = in stores (stores warehouses) − reserved for orders + WIP (open Work Orders and
+  Subcontracting Orders still to deliver) + on order (open Purchase Orders + un-ordered Material
+  Requests). Order now when position ≤ re-order level: suggest max − position, rounded up.
+- **Made-to-stock projects**: family = the Item's Commercial Name (cleaned up), else its top item
+  group; one project per family and period (Month / Quarter / Season), named by the pattern.
+
+**Report page** `/planning-app/reorder-report` (menu: Planning › Stock Levels & Re-order): every
+calculated item with average per day, lead days, safety, re-order level and qty, max, in stores,
+reserved, free, WIP, on order, position, status and suggestion; Order now first, largest suggestion
+first. Status chips filter (their counts ignore the status filter). Each row opens its workings,
+with Refresh now (recalculates that item at once). Stages with no lead days are warned about, and
+made items without lead days are flagged. Plan arrives with the Plan page (step 3).
+
+## Plan project (step 3)
+
+Page `/planning-app/plan` (menu: Planning › Plan Project); `planner.py` + `plan_math.py`.
+
+- **Made to order**: pick the project (Open, Production or Purchase) and optionally its Sales Order
+  (Load lines fills the open quantities). **Made to stock**: each line goes to its family's stock
+  project for the period (Commercial Name, else top item group; Production for made items,
+  Purchase for bought), created on Create. Lines are *Top up to* a level or *Make qty* (the
+  re-order report's Plan opens with its suggestion as Make qty).
+- Scenario rules (project type × order type): Purchase projects only buy; a purchase pool making
+  stock doesn't borrow; made-to-order projects hold their own stock for the order.
+- Per item, parents first: own stock → coming (open orders and requests, drafts included) →
+  other projects' free purchased stock (reserved) → the rest is requested, rounded up, and the
+  next level is worked from the rounded request. Roll items are reserved roll by roll.
+- Made levels: In-house → Manufacture request; Job work → a Purchase request for ONE service
+  (the one this item last used — stenter or dryer — else the stage's most common; switchable).
+- Create re-checks stock, then makes the project (made to stock), the reservations and the draft
+  Material Requests — all or nothing. Project gets Order type / Stock family / Stock period fields.

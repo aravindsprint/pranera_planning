@@ -240,3 +240,74 @@ def allocate_issues(reservations, lines):
             issued[r["name"]] += take
             qty -= take
     return issued
+
+
+def summarise_free_stock(batch_rows, for_project=None, top=5):
+    """Group free stock of one item by the project it belongs to.
+
+    batch_rows   [{"batch_no", "project" (or None), "free_qty"}] — free = in stores minus
+                 what active reservations still hold there
+    for_project  the project asking (e.g. on a Purchase Material Request): its own free
+                 stock is reported separately, not as stock to reserve from elsewhere
+
+    Returns {"own", "elsewhere", "unassigned", "projects": [{"project", "free_qty",
+    "batches"}] (largest first, at most `top`), "more_projects": n}.
+    """
+    own = unassigned = 0.0
+    by_project = {}
+    for r in batch_rows:
+        q = float(r.get("free_qty") or 0)
+        if q <= EPS:
+            continue
+        p = r.get("project")
+        if not p:
+            unassigned += q
+        elif for_project and same_project(p, for_project):
+            own += q
+        else:
+            e = by_project.setdefault(p, {"project": p, "free_qty": 0.0, "batches": 0})
+            e["free_qty"] += q
+            e["batches"] += 1
+    ranked = sorted(by_project.values(), key=lambda e: -e["free_qty"])
+    return {
+        "own": own,
+        "elsewhere": sum(e["free_qty"] for e in ranked),
+        "unassigned": unassigned,
+        "projects": ranked[:top],
+        "more_projects": max(0, len(ranked) - top),
+    }
+
+
+def purchase_shortfall(requested, usable_free, ignore_below=0.0):
+    """How much a Purchase Material Request may ask for, given stock already free.
+
+    requested     qty the request asks for (one item, one project)
+    usable_free   stock of that item free to reserve for that project right now
+    ignore_below  leftovers smaller than this don't count (a few odd kilos shouldn't block
+                  a purchase)
+
+    Returns {"free_counted", "max_request", "breach"}: the request may ask for at most
+    requested - free_counted; breach when it asks for more.
+    """
+    requested = max(0.0, float(requested or 0))
+    usable_free = max(0.0, float(usable_free or 0))
+    free_counted = usable_free if usable_free + EPS >= float(ignore_below or 0) else 0.0
+    max_request = max(0.0, requested - free_counted)
+    return {"free_counted": free_counted, "max_request": max_request, "breach": requested > max_request + EPS}
+
+
+def deepest_minimum(group_bounds, minimums):
+    """The "ignore leftovers below" minimum for an item group: the one set on the nearest
+    group above it in the tree (the group itself counts), else 0.
+
+    group_bounds  (lft, rgt) of the item's group
+    minimums      [(lft, rgt, min_qty)] of the groups that have a minimum set
+    """
+    if not group_bounds:
+        return 0.0
+    lft, rgt = group_bounds
+    best = None
+    for g_lft, g_rgt, qty in minimums:
+        if g_lft <= lft and g_rgt >= rgt and (best is None or g_lft > best[0]):
+            best = (g_lft, float(qty or 0))
+    return best[1] if best else 0.0

@@ -75,12 +75,15 @@ class ProjectStockReservation(Document):
             frappe.throw(_("{0} is typed as {1}, not Purchase or Production — check you have the right project.").format(self.purchase_project, purchase_type))
 
         if self.is_new():
-            production_type, production_status = frappe.db.get_value(
-                "Project", self.production_project, ["project_type", "status"]
-            ) or (None, None)
-            if production_type != "Production":
-                frappe.throw(_("{0} is typed as {1}, not Production — stock can only be reserved for a Production project.").format(
-                    self.production_project, production_type or _("(not set)")))
+            fields = ["project_type", "status"]
+            if frappe.db.has_column("Project", "planning_order_type"):
+                fields.append("planning_order_type")
+            info = frappe.db.get_value("Project", self.production_project, fields, as_dict=True) or frappe._dict()
+            production_type, production_status = info.project_type, info.status
+            # A made-to-order Purchase project (buying for a customer's order) may hold stock too.
+            if production_type != "Production" and info.get("planning_order_type") != "Made to order":
+                frappe.throw(_("{0} is typed as {1}, not Production — stock can only be reserved for a Production project, "
+                               "or a made-to-order project.").format(self.production_project, production_type or _("(not set)")))
             if production_status != "Open":
                 frappe.throw(_("{0} is {1} — stock can only be reserved for an Open project.").format(
                     self.production_project, production_status))

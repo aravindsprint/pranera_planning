@@ -31,6 +31,24 @@ export const pages = [
   },
 
   {
+    path: 'plan',
+    title: 'Plan Project',
+    icon: 'pi pi-sitemap',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/plan/PlanPage.vue'),
+  },
+
+  {
+    path: 'reorder-report',
+    title: 'Stock Levels & Re-order',
+    icon: 'pi pi-chart-bar',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/reorder-report/ReorderReportPage.vue'),
+  },
+
+  {
     path: 'settings',
     title: 'Settings',
     icon: 'pi pi-cog',

@@ -1,0 +1,39 @@
+{
+ "actions": [],
+ "creation": "2026-09-30 18:00:00.000000",
+ "modified": "2026-09-30 18:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Re-order Season",
+ "istable": 1,
+ "editable_grid": 1,
+ "permissions": [],
+ "fields": [
+  {
+   "fieldname": "season",
+   "label": "Season",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "start_month",
+   "label": "Starts in month",
+   "fieldtype": "Select",
+   "options": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "field_order": [
+  "season",
+  "start_month"
+ ]
+}

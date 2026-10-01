@@ -1,7 +1,7 @@
 import unittest
 
 from pranera_planning.reservation_math import (
-    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, remaining_qty, reserved_first, allocate_issues,
+    allowed_issue_qty, clean_roll, location_room, location_summary, place_packed_rolls, purchase_shortfall, deepest_minimum, remaining_qty, reserved_first, summarise_free_stock, allocate_issues,
     same_project,
 )
 
@@ -223,6 +223,57 @@ class TestReservationMath(unittest.TestCase):
     def test_batch_reservation_counts_every_line(self):
         res = [self.R("yarn", "", 2000)]
         self.assertEqual(allocate_issues(res, [self.L("", 500), self.L("R9", 100)]), {"yarn": 600})
+
+
+    # ── free stock before buying ────────────────────────────────────────────
+    def test_free_stock_grouped_by_project(self):
+        rows = [
+            {"batch_no": "B1", "project": "25PUR001", "free_qty": 975},
+            {"batch_no": "B2", "project": "25PUR001", "free_qty": 0},        # nothing free: ignored
+            {"batch_no": "B3", "project": "26PTIN1645", "free_qty": 1200},
+            {"batch_no": "B4", "project": "25prod001", "free_qty": 50},      # the asker's own (any case)
+            {"batch_no": "B5", "project": None, "free_qty": 30},
+        ]
+        s = summarise_free_stock(rows, for_project="25PROD001")
+        self.assertEqual((s["own"], s["elsewhere"], s["unassigned"]), (50, 2175, 30))
+        self.assertEqual([(p["project"], p["free_qty"], p["batches"]) for p in s["projects"]],
+                         [("26PTIN1645", 1200, 1), ("25PUR001", 975, 1)])
+
+    def test_free_stock_lists_top_projects_only(self):
+        rows = [{"batch_no": f"B{i}", "project": f"P{i}", "free_qty": 10 + i} for i in range(8)]
+        s = summarise_free_stock(rows, top=5)
+        self.assertEqual(len(s["projects"]), 5)
+        self.assertEqual(s["more_projects"], 3)
+        self.assertEqual(s["projects"][0]["project"], "P7")
+
+
+    # ── Purchase Material Request: buy only the shortfall ─────────────────────
+    def test_buy_only_what_free_stock_cannot_cover(self):
+        r = purchase_shortfall(2000, 975)
+        self.assertEqual((r["free_counted"], r["max_request"], r["breach"]), (975, 1025, True))
+        # lowering the qty without reserving still leaves the 975 free — only 50 more may be bought
+        self.assertTrue(purchase_shortfall(1025, 975)["breach"])
+        # once the 975 is reserved for the project it is no longer free: the 1025 goes through
+        self.assertFalse(purchase_shortfall(1025, 0)["breach"])
+
+    def test_free_stock_covering_everything_leaves_nothing_to_buy(self):
+        r = purchase_shortfall(800, 975)
+        self.assertEqual((r["max_request"], r["breach"]), (0, True))
+
+    def test_small_leftovers_are_ignored(self):
+        r = purchase_shortfall(2000, 20, ignore_below=25)
+        self.assertEqual((r["free_counted"], r["max_request"], r["breach"]), (0, 2000, False))
+        self.assertTrue(purchase_shortfall(2000, 25, ignore_below=25)["breach"])     # at the minimum, it counts
+
+    def test_nothing_free_nothing_to_block(self):
+        self.assertFalse(purchase_shortfall(500, 0)["breach"])
+
+    def test_minimum_comes_from_the_nearest_group_above(self):
+        mins = [(1, 100, 50), (10, 20, 25)]              # e.g. ALL ITEM GROUPS 50, YARN 25
+        self.assertEqual(deepest_minimum((12, 13), mins), 25)
+        self.assertEqual(deepest_minimum((30, 31), mins), 50)
+        self.assertEqual(deepest_minimum((200, 201), mins), 0)
+        self.assertEqual(deepest_minimum(None, mins), 0)
 
 
 if __name__ == "__main__":

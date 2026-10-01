@@ -1,0 +1,83 @@
+{
+ "actions": [],
+ "creation": "2026-09-30 12:00:00.000000",
+ "modified": "2026-09-30 12:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Stock Reservation Settings",
+ "issingle": 1,
+ "field_order": [
+  "material_request_section",
+  "material_request_check",
+  "override_roles",
+  "column_break_mr",
+  "check_help",
+  "leftover_section",
+  "leftover_minimums"
+ ],
+ "fields": [
+  {
+   "fieldname": "material_request_section",
+   "fieldtype": "Section Break",
+   "label": "Purchase Material Requests"
+  },
+  {
+   "fieldname": "material_request_check",
+   "fieldtype": "Select",
+   "label": "Free stock check",
+   "options": "Block\nWarn\nOff",
+   "default": "Block",
+   "reqd": 1,
+   "description": "Block: a Purchase Material Request may only ask for what free stock can't cover. Warn: show the free stock but allow submitting. Off: no check."
+  },
+  {
+   "fieldname": "override_roles",
+   "fieldtype": "Table MultiSelect",
+   "label": "Roles that may override",
+   "options": "Stock Reservation Override Role",
+   "description": "Users with any of these roles can submit anyway by filling in an override reason on the Material Request."
+  },
+  {
+   "fieldname": "column_break_mr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "check_help",
+   "fieldtype": "HTML",
+   "label": "How it works",
+   "options": "<p class='text-muted small'>On submit, each batch-tracked item on a Purchase Material Request is compared with stock of that item free to reserve right now (in stores, not reserved, not produced for another project). The request may ask for at most <b>requested − free</b>. Reserve the free stock for the project on the Stock Reservation page first; it then stops counting as free.</p>"
+  },
+  {
+   "fieldname": "leftover_section",
+   "fieldtype": "Section Break",
+   "label": "Ignore small leftovers"
+  },
+  {
+   "fieldname": "leftover_minimums",
+   "fieldtype": "Table",
+   "label": "Minimum per item group",
+   "options": "Stock Reservation Leftover Minimum"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Stock Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ]
+}

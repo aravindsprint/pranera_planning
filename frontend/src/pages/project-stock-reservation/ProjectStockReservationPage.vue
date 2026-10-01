@@ -33,7 +33,7 @@
         </div>
       </div>
 
-      <div v-else-if="!data.rows.length && !data.reserved_for.length && !data.produced_rows.length" class="card">
+      <div v-else-if="!data.rows.length && !data.reserved_for.length && !data.produced_rows.length && !data.requests.length" class="card">
         <div class="empty-state">
           <div class="empty-state__title">Nothing received, produced or reserved for {{ data.project }}</div>
           <div class="empty-state__sub">Stock shows here once it is received through a submitted Purchase Receipt with this project, produced by its work orders or subcontracting receipts, or reserved for it from another project.</div>
@@ -103,6 +103,68 @@
             (Material Transfer for Manufacture, Manufacture) or its subcontracting orders (Send to Subcontractor against
             a Subcontracting Order whose item, or the Purchase Order item behind it, is for {{ data.project }}).
             A reservation is marked Fulfilled once everything reserved has been issued.
+          </p>
+        </section>
+
+        <section v-if="data.requests.length" class="section">
+          <h2 class="section__h">Open purchase requests for {{ data.project }}</h2>
+          <p class="section__sub">
+            Yarn and fabric still to be ordered on its Purchase Material Requests — and stock already free that could be reserved instead of bought.
+          </p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Item</th>
+                  <th class="num">Requested</th>
+                  <th class="num">Ordered</th>
+                  <th class="num">Still to order</th>
+                  <th title="Free to reserve under other projects — open one to reserve from it">Free under other projects</th>
+                  <th class="num" title="Already free under this project">Free here</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="q in data.requests" :key="q.request + q.item_code">
+                  <td>
+                    <a class="link-btn primary" :href="`/app/material-request/${encodeURIComponent(q.request)}`" target="_blank">{{ q.request }}</a>
+                    <div class="sub">{{ q.transaction_date }}</div>
+                  </td>
+                  <td>
+                    <div class="item">{{ q.item_name || q.item_code }}</div>
+                    <div v-if="q.item_name && q.item_name !== q.item_code" class="sub">{{ q.item_code }}</div>
+                  </td>
+                  <td class="num">{{ fmt(q.stock_qty) }} <span class="uom">{{ q.uom }}</span></td>
+                  <td class="num">{{ fmt(q.ordered_qty) }}</td>
+                  <td class="num"><strong>{{ fmt(q.pending_qty) }}</strong></td>
+                  <td>
+                    <template v-if="q.free && q.free.elsewhere > 0">
+                      <span :class="q.free.elsewhere >= q.pending_qty ? 'badge badge-success' : 'badge badge-warning'"
+                            :title="q.free.elsewhere >= q.pending_qty ? 'Enough free stock to cover what is still to order' : 'Covers part of what is still to order'">
+                        {{ fmt(q.free.elsewhere) }}
+                      </span>
+                      <div class="sub">
+                        <template v-for="(x, i) in q.free.projects" :key="x.project">
+                          <template v-if="i">, </template>
+                          <button class="link-btn primary" :title="`Open ${x.project} to reserve its stock`" @click="openProject(x.project)">{{ x.project }}</button>
+                          {{ fmt(x.free_qty) }}
+                        </template>
+                        <template v-if="q.free.more_projects"> and {{ q.free.more_projects }} more</template>
+                      </div>
+                    </template>
+                    <span v-else class="muted">None</span>
+                  </td>
+                  <td class="num">
+                    <span v-if="q.free && q.free.own > 0" class="badge badge-warning" title="Already free under this project — check before buying more">{{ fmt(q.free.own) }}</span>
+                    <span v-else class="muted">0</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            To use free stock instead of buying: open the project listed, reserve the stock for {{ data.project }},
+            then reduce or close the request. Services (knitting, dyeing charges, …) are not listed — they have no stock.
           </p>
         </section>
 
@@ -733,6 +795,7 @@ onMounted(() => {
 .level.ok { background: #dcfce7; color: #166534; }
 .sub.warn { color: #b45309; font-weight: 400; }
 .hint.warn { color: #b45309; }
+.badge-success { background: #dcfce7; color: #166534; }
 .rolls__head { display: flex; justify-content: space-between; align-items: baseline; }
 .rolls__count { font-size: 12px; color: var(--slate-500); }
 .rolls__tools { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }

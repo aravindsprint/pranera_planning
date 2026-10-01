@@ -70,8 +70,8 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning.reservation_math import (
-    EPS, allocate_issues, allowed_issue_qty, clean_roll, place_packed_rolls, remaining_qty, reserved_first,
-    same_project,
+    EPS, allocate_issues, allowed_issue_qty, clean_roll, deepest_minimum, location_summary, place_packed_rolls,
+    purchase_shortfall, remaining_qty, reserved_first, same_project, summarise_free_stock,
 )
 
 ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", "Manufacture")
@@ -1134,6 +1134,228 @@ def refresh_all_fulfilment():
     for i in range(0, len(batches), 200):
         refresh_fulfilment(batches[i:i + 200])
     frappe.db.commit()
+
+
+# ── free stock before buying ──────────────────────────────────────────────────
+
+def mr_check_settings():
+    """Stock Reservation Settings for the Purchase Material Request free-stock check:
+    {"mode": "block" | "warn" | "off", "roles": {role, ...}, "minimums": [(lft, rgt, qty)]}.
+    Before the settings exist (app updated, not yet migrated) the check only warns."""
+    try:
+        doc = frappe.get_cached_doc("Stock Reservation Settings")
+    except Exception:
+        return {"mode": "warn", "roles": set(), "minimums": []}
+    mode = (doc.get("material_request_check") or "Block").lower()
+    groups = [r.item_group for r in (doc.get("leftover_minimums") or []) if r.item_group]
+    bounds = {g.name: (g.lft, g.rgt) for g in frappe.get_all(
+        "Item Group", filters={"name": ["in", groups]}, fields=["name", "lft", "rgt"])} if groups else {}
+    return {
+        "mode": mode if mode in ("block", "warn", "off") else "block",
+        "roles": {r.role for r in (doc.get("override_roles") or []) if r.role},
+        "minimums": [(*bounds[r.item_group], flt(r.min_qty)) for r in (doc.get("leftover_minimums") or [])
+                     if r.item_group in bounds],
+    }
+
+
+def batch_items(item_codes):
+    """The subset of item_codes that are batch-tracked stock items (yarn, fabric) — services
+    such as DRYER or STENTER have no stock to reserve."""
+    item_codes = list({i for i in item_codes if i})
+    if not item_codes:
+        return set()
+    return set(frappe.get_all("Item", filters={"name": ["in", item_codes], "is_stock_item": 1, "has_batch_no": 1},
+                              pluck="name"))
+
+
+def free_stock(item_codes, for_project=None, include_produced_elsewhere=True):
+    """{item: summary} of stock free to reserve right now, per item, grouped by the project
+    it belongs to (see reservation_math.summarise_free_stock), plus "uom".
+
+    Free = in issuable warehouses minus what active reservations still hold there. A batch
+    belongs to the project it was purchased under, else the one it was produced for.
+    Batches are found through Batch.batch_qty first (indexed by item; a 1 s history scan
+    otherwise), then located by batch number.
+
+    include_produced_elsewhere=False leaves out batches produced for another project: they
+    belong to it, so they aren't stock a purchase should be expected to use instead.
+    """
+    items = batch_items(item_codes)
+    if not items:
+        return {}
+    batches = frappe.get_all("Batch", filters={"item": ["in", list(items)], "batch_qty": [">", EPS], "disabled": 0},
+                             fields=["name", "item"])
+    item_of = {b.name: b.item for b in batches}
+    uoms = {i.name: i.stock_uom for i in frappe.get_all("Item", filters={"name": ["in", list(items)]}, fields=["name", "stock_uom"])}
+    out = {i: {**summarise_free_stock([], for_project), "uom": uoms.get(i)} for i in items}
+    if not item_of:
+        return out
+
+    names = list(item_of)
+    locations = get_stock_locations(names)
+    purchased = dict(frappe.db.sql(
+        """SELECT pri.batch_no, MAX(pri.project) FROM `tabPurchase Receipt Item` pri
+           JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
+           WHERE pri.batch_no IN %(b)s AND IFNULL(pri.project, '') <> ''
+           GROUP BY pri.batch_no""", {"b": tuple(names)},
+    ))
+    owners = get_produced_owners(names)
+    reserved = set(frappe.get_all("Project Stock Reservation",
+                                  filters={"status": "Active", "batch_no": ["in", names]}, pluck="batch_no"))
+    state = get_reservation_state(reserved) if reserved else {}
+
+    rows = defaultdict(list)
+    for batch, locs in locations.items():
+        free = 0.0
+        for wh, loc in locs.items():
+            res = reservations_at(state[batch], wh) if batch in state else []
+            free += location_summary(loc["available"], loc["rolls"], res)["free"] if res else max(0.0, loc["available"])
+        if (not include_produced_elsewhere and batch not in purchased and owners.get(batch)
+                and not (for_project and same_project(owners[batch], for_project))):
+            continue
+        rows[item_of[batch]].append({"batch_no": batch, "project": purchased.get(batch) or owners.get(batch), "free_qty": free})
+    for item, r in rows.items():
+        out[item] = {**summarise_free_stock(r, for_project), "uom": uoms.get(item)}
+    return out
+
+
+def check_material_request(doc, method=None):
+    """doc_events hook: Material Request validate + before_submit.
+
+    A Purchase request may ask, per batch-tracked item and project, for at most
+    requested − stock of that item free to reserve for that project right now (its own,
+    other projects' purchased stock, stock with no project — not stock produced for another
+    project), ignoring free stock below the item group's minimum. See
+    reservation_math.purchase_shortfall and Stock Reservation Settings.
+
+    On save: an orange notice. On submit, in Block mode: refused — unless the user has a
+    role listed in the settings and has filled in reservation_override_reason, which is then
+    recorded as a comment. A failure in the check itself never stops the request; it is
+    logged and shown.
+    """
+    if doc.material_request_type != "Purchase":
+        return
+    submitting = method == "before_submit"
+    if not submitting and getattr(doc, "_action", None) == "submit":
+        return                                            # before_submit will run the check
+    try:
+        cfg = mr_check_settings()
+        if cfg["mode"] == "off":
+            return
+        breaches = _purchase_shortfalls(doc, cfg)
+        if not breaches:
+            return
+        can_override = bool(cfg["roles"] & set(frappe.get_roles()))
+        reason = (doc.get("reservation_override_reason") or "").strip()
+        message = _shortfall_message(breaches, cfg, can_override)
+
+        if not submitting or cfg["mode"] == "warn":
+            frappe.msgprint(message, title=_("Free stock you should reserve instead of buying"),
+                            indicator="orange", wide=True)
+            return
+        if can_override and reason:
+            doc.add_comment("Comment", _("Bought despite free stock (override by {0}): {1}").format(
+                frappe.session.user, frappe.utils.escape_html(reason)))
+            frappe.msgprint(_("Submitted with an override: the free stock was not reserved."),
+                            indicator="orange", alert=True)
+            return
+        if can_override:
+            frappe.throw(message + "<br><br>" + _("To buy anyway, fill in <b>Override reason</b> and submit again."),
+                         title=_("Reserve the free stock first"))
+        frappe.throw(message, title=_("Reserve the free stock first"))
+    except frappe.ValidationError:
+        raise
+    except Exception:
+        frappe.log_error(title="Free stock check on Material Request failed")
+        frappe.msgprint(_("The free stock check could not run, so this request was not checked. "
+                          "Please report it — details are in the Error Log."),
+                        title=_("Free stock check skipped"), indicator="orange")
+
+
+def _purchase_shortfalls(doc, cfg):
+    """[{"item_code", "project", "requested", "free_counted", "max_request", "stock"}] for
+    each (project, item) on the request that asks for more than free stock allows."""
+    wanted = defaultdict(float)                           # (project, item) -> stock qty
+    for row in doc.items:
+        if row.item_code:
+            qty = flt(row.get("stock_qty")) or flt(row.qty) * (flt(row.get("conversion_factor")) or 1)
+            wanted[(row.get("project") or doc.get("project") or "", row.item_code)] += qty
+    if not wanted:
+        return []
+    items = {key[1] for key in wanted}
+    groups = dict(frappe.get_all("Item", filters={"name": ["in", list(items)]}, fields=["name", "item_group"], as_list=True))
+    bounds = {g.name: (g.lft, g.rgt) for g in frappe.get_all(
+        "Item Group", filters={"name": ["in", list(set(groups.values()))]}, fields=["name", "lft", "rgt"])}
+
+    out = []
+    for project in {key[0] for key in wanted}:
+        stock = free_stock([key[1] for key in wanted if key[0] == project], for_project=project or None,
+                           include_produced_elsewhere=False)
+        for (p, item), requested in wanted.items():
+            if p != project or item not in stock:
+                continue
+            st = stock[item]
+            usable = st["own"] + st["elsewhere"] + st["unassigned"]
+            minimum = deepest_minimum(bounds.get(groups.get(item)), cfg["minimums"])
+            r = purchase_shortfall(requested, usable, minimum)
+            if r["breach"]:
+                out.append({"item_code": item, "project": project, "requested": requested, "stock": st, **r})
+    return out
+
+
+def _shortfall_message(breaches, cfg, can_override):
+    page = "/planning-app/project-stock-reservation?project="
+    esc = frappe.utils.escape_html
+    parts = []
+    for b in breaches:
+        st, uom = b["stock"], b["stock"]["uom"] or ""
+        bits = []
+        if st["own"] > EPS:
+            bits.append(_("{0:,.0f} {1} already free under this project").format(st["own"], uom))
+        for p in st["projects"]:
+            bits.append(_('{0:,.0f} {1} free under <a href="{2}{3}" target="_blank">{3}</a>').format(
+                p["free_qty"], uom, page, esc(p["project"])))
+        if st["more_projects"]:
+            bits.append(_("… and under {0} more projects").format(st["more_projects"]))
+        if st["unassigned"] > EPS:
+            bits.append(_("{0:,.0f} {1} free with no project").format(st["unassigned"], uom))
+        parts.append(_(
+            "<b>{0}</b>{1}: requesting {2:,.0f} {3}, but {4:,.0f} {3} is free in stores right now:<br>{5}<br>"
+            "With that stock free, this request can ask for at most <b>{6:,.0f} {3}</b>."
+        ).format(esc(b["item_code"]), _(" for {0}").format(esc(b["project"])) if b["project"] else "",
+                 b["requested"], uom, b["free_counted"], "<br>".join(f"&nbsp;&nbsp;• {x}" for x in bits), b["max_request"]))
+    tail = _("Reserve the free stock for the project on the Stock Reservation page (it then no longer counts as free), "
+             "then submit this request for the rest.")
+    if cfg["mode"] == "block" and not can_override:
+        roles = ", ".join(sorted(cfg["roles"])) or _("(none set in Stock Reservation Settings)")
+        tail += "<br>" + _("Only these roles can buy anyway, with a reason: {0}.").format(esc(roles))
+    return "<br><br>".join(parts) + "<br><br>" + tail
+
+
+def _free_stock_message(found):
+    page = "/planning-app/project-stock-reservation?project="
+    esc = frappe.utils.escape_html
+    parts = []
+    for r, project, st in found:
+        uom = st["uom"] or ""
+        wanted = flt(r.get("stock_qty") or r.get("qty"))
+        bits = []
+        if st["own"] > EPS:
+            bits.append(_("<b>{0:,.0f} {1}</b> already free under this project ({2})").format(st["own"], uom, esc(project)))
+        if st["projects"]:
+            links = ", ".join(
+                f'<a href="{page}{esc(p["project"])}" target="_blank">{esc(p["project"])}</a> {p["free_qty"]:,.0f}'
+                for p in st["projects"]
+            )
+            more = _(" and {0} more").format(st["more_projects"]) if st["more_projects"] else ""
+            bits.append(_("<b>{0:,.0f} {1}</b> free under other projects: {2}{3}").format(st["elsewhere"], uom, links, more))
+        if st["unassigned"] > EPS:
+            bits.append(_("{0:,.0f} {1} free with no project").format(st["unassigned"], uom))
+        parts.append(_("<b>{0}</b> — requesting {1:,.0f} {2}:<br>{3}").format(
+            esc(r.item_code), wanted, uom, "<br>".join(f"&nbsp;&nbsp;• {b}" for b in bits)))
+    return "<br><br>".join(parts) + "<br><br>" + _(
+        "Open a project above to reserve its stock for your project on the Stock Reservation page, "
+        "then reduce or drop this request.")
 
 
 # ── preview: what the produced-stock rule would block ─────────────────────────

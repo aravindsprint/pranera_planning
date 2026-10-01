@@ -1,0 +1,211 @@
+{
+ "actions": [],
+ "creation": "2026-09-30 18:00:00.000000",
+ "modified": "2026-10-01 10:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Re-order Settings",
+ "issingle": 1,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Stock Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Manufacturing Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "fields": [
+  {
+   "fieldname": "demand_section",
+   "label": "Demand",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "history_days",
+   "label": "History (days)",
+   "fieldtype": "Int",
+   "default": "90",
+   "reqd": 1,
+   "description": "Average daily demand = demand in these last days ÷ days."
+  },
+  {
+   "fieldname": "near_margin",
+   "label": "Near margin (%)",
+   "fieldtype": "Float",
+   "default": "10",
+   "description": "Items within this much above their re-order level show as Near."
+  },
+  {
+   "fieldname": "column_break_d",
+   "label": "",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_safety_days",
+   "label": "Default safety days",
+   "fieldtype": "Float",
+   "default": "5"
+  },
+  {
+   "fieldname": "default_cover_days",
+   "label": "Default cover days",
+   "fieldtype": "Float",
+   "default": "30"
+  },
+  {
+   "fieldname": "default_round_to",
+   "label": "Default round up to",
+   "fieldtype": "Float",
+   "default": "1"
+  },
+  {
+   "fieldname": "rules_section",
+   "label": "Per item group",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "group_rules",
+   "label": "Rules",
+   "fieldtype": "Table",
+   "options": "Re-order Group Rule"
+  },
+  {
+   "fieldname": "lead_section",
+   "label": "Lead days per stage",
+   "fieldtype": "Section Break",
+   "description": "Days used drives the re-order levels. The learned medians beside it are a guide, refreshed nightly: Work Order creation to its last Manufacture entry (in-house), Subcontracting Order date to its last Subcontracting Receipt (job work)."
+  },
+  {
+   "fieldname": "lead_history_months",
+   "label": "Learn from the last (months)",
+   "fieldtype": "Int",
+   "default": "6"
+  },
+  {
+   "fieldname": "use_learned_lead_days",
+   "fieldtype": "Check",
+   "label": "Use learned days where Days used is empty",
+   "default": "0",
+   "description": "Off: only Days used counts. Learned medians include time waiting before an order starts (on live, dyeing orders take 25 days from creation but half a day from first transfer), so check them first."
+  },
+  {
+   "fieldname": "include_bought_lead_days",
+   "fieldtype": "Check",
+   "label": "Include bought materials' lead days",
+   "default": "0",
+   "description": "Off: a made item's lead days stop at its bought material (yarn), which has its own re-order level. On: the supplier's lead days are added too (finished fabric 15 + yarn 10 = 25)."
+  },
+  {
+   "fieldname": "stage_leads",
+   "label": "Stages",
+   "fieldtype": "Table",
+   "options": "Re-order Stage Lead"
+  },
+  {
+   "fieldname": "plan_section",
+   "fieldtype": "Section Break",
+   "label": "Plans"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Warehouse for planned requests",
+   "description": "Where Material Requests from a plan expect the goods (each item's default warehouse is used first)."
+  },
+  {
+   "fieldname": "stock_section",
+   "label": "Made-to-stock projects",
+   "fieldtype": "Section Break",
+   "description": "Made-to-stock plans go to one project per item family and period. Family = the Item's Commercial Name (else its top item group)."
+  },
+  {
+   "fieldname": "stock_project_period",
+   "label": "One project per",
+   "fieldtype": "Select",
+   "options": "Quarter\nMonth\nSeason",
+   "default": "Quarter"
+  },
+  {
+   "fieldname": "stock_project_pattern",
+   "label": "Project name",
+   "fieldtype": "Data",
+   "default": "{YY}STK-{FAMILY}-{PERIOD}",
+   "description": "{YY} or {YYYY}, {FAMILY}, {PERIOD} (Q4, OCT or the season's name)."
+  },
+  {
+   "fieldname": "column_break_s",
+   "label": "",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "seasons",
+   "label": "Seasons",
+   "fieldtype": "Table",
+   "options": "Re-order Season",
+   "depends_on": "eval:doc.stock_project_period=='Season'"
+  },
+  {
+   "fieldname": "run_section",
+   "label": "Last run",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "last_run",
+   "label": "Last calculated",
+   "fieldtype": "Datetime",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_run_items",
+   "label": "Items calculated",
+   "fieldtype": "Int",
+   "read_only": 1
+  }
+ ],
+ "field_order": [
+  "demand_section",
+  "history_days",
+  "near_margin",
+  "column_break_d",
+  "default_safety_days",
+  "default_cover_days",
+  "default_round_to",
+  "rules_section",
+  "group_rules",
+  "lead_section",
+  "lead_history_months",
+  "use_learned_lead_days",
+  "include_bought_lead_days",
+  "stage_leads",
+  "plan_section",
+  "default_warehouse",
+  "stock_section",
+  "stock_project_period",
+  "stock_project_pattern",
+  "column_break_s",
+  "seasons",
+  "run_section",
+  "last_run",
+  "last_run_items"
+ ]
+}

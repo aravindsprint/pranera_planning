@@ -1,0 +1,41 @@
+{
+ "actions": [],
+ "creation": "2026-09-30 12:00:00.000000",
+ "modified": "2026-09-30 12:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Stock Reservation Leftover Minimum",
+ "istable": 1,
+ "editable_grid": 1,
+ "field_order": [
+  "item_group",
+  "min_qty"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Applies to this group and every group under it, unless a group lower down has its own minimum."
+  },
+  {
+   "fieldname": "min_qty",
+   "fieldtype": "Float",
+   "label": "Ignore free stock below",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "In the items' stock unit (e.g. Kgs). Free stock smaller than this doesn't block a purchase."
+  }
+ ],
+ "permissions": []
+}

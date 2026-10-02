@@ -127,7 +127,7 @@
               <tbody>
                 <tr v-for="q in data.requests" :key="q.request + q.item_code">
                   <td>
-                    <a class="link-btn primary" :href="`/app/material-request/${encodeURIComponent(q.request)}`" target="_blank">{{ q.request }}</a>
+                    <a class="link-btn primary" :href="deskUrl(`/app/material-request/${encodeURIComponent(q.request)}`)" target="_blank">{{ q.request }}</a>
                     <div class="sub">{{ q.transaction_date }}</div>
                   </td>
                   <td>
@@ -491,6 +491,7 @@
 </template>
 
 <script setup>
+import { deskUrl } from '@/config/backend'
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'

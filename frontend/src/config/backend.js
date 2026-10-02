@@ -33,3 +33,13 @@ export function backendLabel() {
   const b = BACKENDS[currentBackend()]
   return `${b.label} — ${b.target} (dev proxy)`
 }
+
+// Link to the Frappe desk (/app/…). In production the desk is on the same origin, so the
+// path is enough. On the dev server it isn't — /app/… there is this app's own "not found" —
+// so point at the backend the dev proxy is using (localhost rather than 127.0.0.1, so the
+// browser sends the login cookie you already have for the local bench).
+export function deskUrl(path = '/app') {
+  if (!isDev) return path
+  const target = (BACKENDS[currentBackend()]?.target || '').replace('//127.0.0.1', '//localhost').replace(/\/$/, '')
+  return target ? `${target}${path}` : path
+}

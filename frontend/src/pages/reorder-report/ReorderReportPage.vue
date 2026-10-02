@@ -38,7 +38,7 @@
           {{ data.settings.history_days }} days of sales and consumption.
         </template>
         <template v-else>Not calculated yet — use Recalculate all, or wait for tonight's run.</template>
-        <a href="/app/re-order-settings" target="_blank">Re-order settings</a>
+        <a :href="deskUrl('/app/re-order-settings')" target="_blank">Re-order settings</a>
       </p>
       <div v-if="data && data.settings.stages_without_days.length" class="alert alert-warning" role="status">
         No lead days set for: <b>{{ data.settings.stages_without_days.join(', ') }}</b>. Items made by these stages get no
@@ -160,6 +160,7 @@
 </template>
 
 <script setup>
+import { deskUrl } from '@/config/backend'
 import { ref, reactive, onMounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import LinkField from '@/components/LinkField.vue'

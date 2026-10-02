@@ -64,7 +64,7 @@
           <thead><tr><th>Request</th><th>Lines</th><th>Kind</th><th>Status</th></tr></thead>
           <tbody>
             <tr v-for="m in data.requests" :key="m.name">
-              <td><a :href="`/app/material-request/${m.name}`" target="_blank">{{ m.name }}</a></td>
+              <td><a :href="deskUrl(`/app/material-request/${m.name}`)" target="_blank">{{ m.name }}</a></td>
               <td>{{ m.lines.map((l) => `${l.item} ${fmt(l.qty)}`).join(' · ') }}</td>
               <td>{{ m.kind }}</td>
               <td><span class="badge" :class="m.status === 'Draft' ? 'badge-warning' : 'badge-info'">{{ m.status }}</span></td>
@@ -100,6 +100,7 @@
 </template>
 
 <script setup>
+import { deskUrl } from '@/config/backend'
 import { ref, computed, watch } from 'vue'
 import { callMessage } from '@/api/frappe'
 

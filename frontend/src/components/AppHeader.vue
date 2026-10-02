@@ -31,7 +31,7 @@
         </nav>
 
         <div class="drawer__foot">
-          <a class="link" href="/app"><i class="pi pi-external-link"></i><span>Open ERPNext desk</span></a>
+          <a class="link" :href="deskUrl('/app')"><i class="pi pi-external-link"></i><span>Open ERPNext desk</span></a>
           <button class="link link--danger" @click="logout"><i class="pi pi-sign-out"></i><span>Log out</span></button>
         </div>
       </aside>
@@ -55,6 +55,7 @@
 </template>
 
 <script setup>
+import { deskUrl } from '@/config/backend'
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'

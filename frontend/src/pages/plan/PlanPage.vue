@@ -215,7 +215,7 @@
           <div class="card__title">{{ c.project_name || c.project }} · created</div>
           <p class="sub">{{ c.reservations.length }} reservations · {{ c.requests.length }} draft Material Requests — review and submit them.</p>
           <div class="kv" v-for="m in c.requests" :key="m.name">
-            <span><a :href="`/app/material-request/${m.name}`" target="_blank">{{ m.name }}</a> · {{ m.kind === 'Job work' ? 'Purchase · job work' : m.kind }}</span>
+            <span><a :href="deskUrl(`/app/material-request/${m.name}`)" target="_blank">{{ m.name }}</a> · {{ m.kind === 'Job work' ? 'Purchase · job work' : m.kind }}</span>
             <b>{{ m.lines }} {{ m.lines === 1 ? 'line' : 'lines' }}</b>
           </div>
           <div class="actions">
@@ -229,6 +229,7 @@
 </template>
 
 <script setup>
+import { deskUrl } from '@/config/backend'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'

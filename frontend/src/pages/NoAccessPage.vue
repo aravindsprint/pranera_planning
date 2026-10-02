@@ -4,12 +4,13 @@
       <i class="pi pi-lock msg-icon"></i>
       <h1>You don't have access to Planning</h1>
       <p>Ask your ERPNext administrator to give your account one of these roles: {{ ALLOWED_ROLES.join(', ') }}.</p>
-      <a href="/app" class="btn btn-outline">Back to ERPNext</a>
+      <a :href="deskUrl('/app')" class="btn btn-outline">Back to ERPNext</a>
     </div>
   </div>
 </template>
 
 <script setup>
+import { deskUrl } from '@/config/backend'
 import { ALLOWED_ROLES } from '@/config/app'
 </script>
 

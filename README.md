@@ -294,3 +294,12 @@ redirect to the right tab, so links and bookmarks keep working.
   family in a period gets the next number (…-Q4-01, …-Q4-02; gaps aren't reused). Re-planning from
   a project's own Plan tab keeps that project. A pattern without `{SEQ}` reuses one project per
   family and period. The `stock_project_sequence` patch moves sites still on the old default.
+
+## Made-to-order Sales Orders get their project
+
+Sales Order › **Made to order** (tick box). On submit, a ticked order with no Project gets a new
+Production, made-to-order project named after it (Customer, Sales Order, delivery date filled in,
+linked both ways); a chosen project is linked instead, and one already tied to another order is
+refused on save. An amended order takes over the original's project. Cancelling closes a project
+the order created that nothing has used yet. Unticked orders (stock sales, Shopify, Unicommerce)
+are untouched. `sales_order.py`; patch `add_sales_order_mto_field`.

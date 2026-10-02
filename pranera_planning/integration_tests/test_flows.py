@@ -179,3 +179,28 @@ class TestFlows(FrappeTestCase):
         self.assertTrue(stock)                                     # test 7's family project
         o = get_overview(stock[0])
         self.assertEqual([(r["item"], flt(r["target"]), r["mode"]) for r in o["rows"]], [(YARN, 2000, "top_up")])
+
+    def test_9_made_to_order_sales_order_gets_its_project(self):
+        if not frappe.db.has_column("Sales Order", "made_to_order"):
+            self.skipTest("Sales Order › Made to order not installed (migrate first)")
+        so = frappe.get_doc({"doctype": "Sales Order", "customer": "PPT Customer", "company": self.company,
+                             "transaction_date": today(), "delivery_date": today(), "made_to_order": 1,
+                             "items": [{"item_code": GREIGE, "qty": 100, "rate": 20, "delivery_date": today(),
+                                        "warehouse": self.stores}]})
+        so.insert()
+        so.submit()
+        project = frappe.db.get_value("Sales Order", so.name, "project")
+        p = frappe.db.get_value("Project", project, ["project_type", "planning_order_type", "sales_order", "customer", "status"],
+                                as_dict=True)
+        self.assertEqual((p.project_type, p.planning_order_type, p.sales_order, p.customer, p.status),
+                         ("Production", "Made to order", so.name, "PPT Customer", "Open"))
+        so.cancel()                                                 # nothing used it yet: the project is closed
+        self.assertEqual(frappe.db.get_value("Project", project, "status"), "Cancelled")
+        plain = frappe.get_doc({"doctype": "Sales Order", "customer": "PPT Customer", "company": self.company,
+                                "transaction_date": today(), "delivery_date": today(),
+                                "items": [{"item_code": GREIGE, "qty": 100, "rate": 20, "delivery_date": today(),
+                                           "warehouse": self.stores}]})
+        plain.insert()
+        plain.submit()                                              # no tick: no project
+        self.assertFalse(frappe.db.get_value("Sales Order", plain.name, "project"))
+        plain.cancel()

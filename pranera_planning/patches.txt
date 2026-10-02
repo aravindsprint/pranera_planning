@@ -10,3 +10,4 @@ pranera_planning.patches.setup_reorder_settings
 pranera_planning.patches.setup_planning_fields
 pranera_planning.patches.add_saved_plan_field
 pranera_planning.patches.stock_project_sequence
+pranera_planning.patches.add_sales_order_mto_field

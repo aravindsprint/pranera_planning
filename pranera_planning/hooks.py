@@ -56,6 +56,11 @@ doc_events = {
     "Sales Invoice": {
         "validate": "pranera_planning.reservation.check_delivery",
     },
+    "Sales Order": {
+        "validate": "pranera_planning.sales_order.validate",
+        "on_submit": "pranera_planning.sales_order.on_submit",
+        "on_cancel": "pranera_planning.sales_order.on_cancel",
+    },
     "Roll Wise Pick List": {
         "on_submit": "pranera_planning.reservation.refresh_from_pick_list",
         "on_cancel": "pranera_planning.reservation.refresh_from_pick_list",
@@ -84,4 +89,5 @@ after_install = [
     "pranera_planning.patches.setup_material_request_check.execute",
     "pranera_planning.patches.setup_planning_fields.execute",
     "pranera_planning.patches.add_saved_plan_field.execute",
+    "pranera_planning.patches.add_sales_order_mto_field.execute",
 ]

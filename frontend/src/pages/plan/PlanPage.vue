@@ -38,6 +38,9 @@
           {{ soInfo.customer }} · {{ soInfo.sales_order }} · delivery {{ soInfo.delivery_date || '—' }}
           <template v-if="!soInfo.submitted"> · <b>the Sales Order isn't submitted yet</b></template>
         </p>
+        <p v-else-if="form.order_type === MTS && forProject" class="note">
+          Re-plans {{ forProject }}: its saved targets are loaded; changes and new requests stay under this project.
+        </p>
         <p v-else-if="form.order_type === MTS" class="note">
           Each line goes to the stock project of its family and period: family = the item's Commercial Name (else its top item
           group), period from Re-order Settings. Made items → a Production project, bought items → a Purchase project; it's
@@ -299,7 +302,7 @@ async function loadSalesOrder() {
 }
 function payload() {
   return {
-    order_type: form.order_type, project: form.order_type === MTO ? form.project : null,
+    order_type: form.order_type, project: form.project || null,
     sales_order: form.order_type === MTO ? form.sales_order : null, needed_by: form.needed_by || null,
     lines: form.lines.filter((l) => l.item && l.qty > 0)
       .map((l) => ({ item: l.item, qty: l.qty, mode: form.order_type === MTS ? l.mode : 'need', label: l.label })),
@@ -352,7 +355,7 @@ async function loadDefaults(project) {
     const d = await callMessage('pranera_planning.api.plan.plan_defaults', { project })
     reset()
     form.order_type = d.order_type
-    form.project = d.order_type === MTO ? project : ''
+    form.project = project
     form.sales_order = d.sales_order || ''
     form.needed_by = d.needed_by || ''
     if (d.lines.length) form.lines = d.lines.map((l) => ({ item: l.item, qty: l.qty, mode: l.mode, label: l.label }))

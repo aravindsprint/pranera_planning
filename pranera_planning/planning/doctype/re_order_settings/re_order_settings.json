@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-30 18:00:00.000000",
- "modified": "2026-10-01 10:00:00.000000",
+ "modified": "2026-10-02 12:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -149,8 +149,8 @@
    "fieldname": "stock_project_pattern",
    "label": "Project name",
    "fieldtype": "Data",
-   "default": "{YY}STK-{FAMILY}-{PERIOD}",
-   "description": "{YY} or {YYYY}, {FAMILY}, {PERIOD} (Q4, OCT or the season's name)."
+   "default": "{YY}STK-{FAMILY}-{PERIOD}-{SEQ}",
+   "description": "{YY} or {YYYY}, {FAMILY}, {PERIOD} (Q4, OCT or the season's name), {SEQ} (01, 02 … per family and period: every new plan gets its own project). Without {SEQ}, one project per family and period is reused."
   },
   {
    "fieldname": "column_break_s",

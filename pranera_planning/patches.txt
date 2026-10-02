@@ -9,3 +9,4 @@ pranera_planning.patches.setup_material_request_check
 pranera_planning.patches.setup_reorder_settings
 pranera_planning.patches.setup_planning_fields
 pranera_planning.patches.add_saved_plan_field
+pranera_planning.patches.stock_project_sequence

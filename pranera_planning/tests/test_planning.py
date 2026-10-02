@@ -148,5 +148,36 @@ class TestPropose(unittest.TestCase):
         self.assertEqual([r for r in p["reservations"] if r["kind"] == "own"], [])  # made to stock: own stock stays free
 
 
+    def _mts(self, pattern, existing_names, payload_extra=None):
+        P = self.P
+        settings = P.load_settings()
+        settings["doc"]["stock_project_pattern"] = pattern
+        P.load_settings = lambda: settings
+        P.free_lots = lambda codes: {}
+        P.held_for = lambda project, codes: {}
+        P.coming = lambda project, codes: ({}, {})
+        kinds = self.f.get_all
+
+        def get_all(doctype, filters=None, fields=None, as_list=False, pluck=None, **kw):
+            if doctype == "Project" and pluck == "project_name":
+                return list(existing_names)
+            return kinds(doctype, filters=filters, fields=fields, as_list=as_list, **kw)
+        self.f.get_all = get_all
+        self.f.db.get_value = lambda dt, name, fields=None, **kw: (
+            _dict(name=name, project_name=name, project_type="Production") if isinstance(name, str) else None)
+        return P.propose({"order_type": "Made to stock", "needed_by": "2026-10-20",
+                          "lines": [{"item": SKF, "qty": 5000, "mode": "top_up"}, {"item": DKF, "qty": 100, "mode": "top_up"}],
+                          **(payload_extra or {})})
+
+    def test_second_plan_in_the_quarter_gets_the_next_number(self):
+        props = self._mts("{YY}STK-{FAMILY}-{PERIOD}-{SEQ}", ["26STK-2TF ECO 220-Q4-01"])
+        self.assertEqual(len(props), 1)                                   # both lines are 2TF ECO 220: one project
+        self.assertEqual((props[0]["project"]["project_name"], props[0]["project"]["exists"]), ("26STK-2TF ECO 220-Q4-02", False))
+
+    def test_replanning_a_stock_project_keeps_it(self):
+        props = self._mts("{YY}STK-{FAMILY}-{PERIOD}-{SEQ}", ["26STK-2TF ECO 220-Q4-01"], {"project": "26STK-2TF ECO 220-Q4-01"})
+        self.assertEqual((props[0]["project"]["project"], props[0]["project"]["exists"]), ("26STK-2TF ECO 220-Q4-01", True))
+
+
 if __name__ == "__main__":
     unittest.main()

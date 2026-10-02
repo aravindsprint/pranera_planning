@@ -144,10 +144,29 @@ def period_of(d, mode, seasons=()):
     return d.year, f"Q{(d.month - 1) // 3 + 1}"
 
 
-def stock_project_name(pattern, year, family, period):
-    """e.g. "{YY}STK-{FAMILY}-{PERIOD}" → "26STK-2TF ECO 220-Q4"."""
-    return (pattern or "{YY}STK-{FAMILY}-{PERIOD}").format(
-        YY=f"{year % 100:02d}", YYYY=str(year), FAMILY=family, PERIOD=period)
+DEFAULT_STOCK_PATTERN = "{YY}STK-{FAMILY}-{PERIOD}-{SEQ}"
+
+
+def stock_project_name(pattern, year, family, period, seq=None):
+    """e.g. "{YY}STK-{FAMILY}-{PERIOD}-{SEQ}" → "26STK-2TF ECO 220-Q4-01".
+    {SEQ} is the plan's number for that family and period, two digits (see next_seq);
+    without a seq it is left in place."""
+    out = (pattern or DEFAULT_STOCK_PATTERN)
+    for key, value in (("{YYYY}", str(year)), ("{YY}", f"{year % 100:02d}"), ("{FAMILY}", family), ("{PERIOD}", period)):
+        out = out.replace(key, value)
+    return out.replace("{SEQ}", f"{int(seq):02d}") if seq is not None else out
+
+
+def next_seq(pattern, year, family, period, existing_names):
+    """The next {SEQ} for this family and period: 1 + the highest number among the existing
+    project names that fit the pattern (1 when there are none). Gaps aren't reused."""
+    template = stock_project_name(pattern, year, family, period)
+    if "{SEQ}" not in template:
+        return None
+    before, after = template.split("{SEQ}", 1)
+    rx = re.compile("^" + re.escape(before) + r"(\d+)" + re.escape(after) + "$")
+    found = [int(m.group(1)) for n in existing_names or [] if (m := rx.match(str(n)))]
+    return (max(found) if found else 0) + 1
 
 
 def deepest(group_bounds, entries):

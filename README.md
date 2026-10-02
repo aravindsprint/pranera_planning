@@ -283,3 +283,14 @@ redirect to the right tab, so links and bookmarks keep working.
 - **Stock & reservations**: the former Stock Reservation page, embedded.
 - **+ New plan** (`?new=1`, also the re-order report's Plan): made-to-stock lines that go to their
   family projects; Create opens the first one.
+
+## Re-order Settings in the app, and numbered stock projects
+
+- `/planning-app/reorder-settings` (menu: Planning › Re-order Settings) edits the same single
+  doctype as the desk form (`api.reorder_settings`): demand, item-group rules, stages (learned
+  figures are kept from the nightly run, never taken from the page), plans, made-to-stock
+  projects with a live name preview, and Recalculate now.
+- Made-to-stock project names default to `{YY}STK-{FAMILY}-{PERIOD}-{SEQ}`: every new plan for a
+  family in a period gets the next number (…-Q4-01, …-Q4-02; gaps aren't reused). Re-planning from
+  a project's own Plan tab keeps that project. A pattern without `{SEQ}` reuses one project per
+  family and period. The `stock_project_sequence` patch moves sites still on the old default.

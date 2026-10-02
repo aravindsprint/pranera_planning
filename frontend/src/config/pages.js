@@ -59,6 +59,15 @@ export const pages = [
   },
 
   {
+    path: 'reorder-settings',
+    title: 'Re-order Settings',
+    icon: 'pi pi-sliders-h',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/reorder-settings/ReorderSettingsPage.vue'),
+  },
+
+  {
     path: 'settings',
     title: 'Settings',
     icon: 'pi pi-cog',

@@ -12,7 +12,7 @@ def execute():
     s = frappe.get_single("Re-order Settings")
     defaults = {"history_days": 90, "near_margin": 10, "default_safety_days": 5, "default_cover_days": 30,
                 "default_round_to": 1, "lead_history_months": 6, "stock_project_period": "Quarter",
-                "stock_project_pattern": "{YY}STK-{FAMILY}-{PERIOD}"}
+                "stock_project_pattern": "{YY}STK-{FAMILY}-{PERIOD}-{SEQ}"}
     for field, value in defaults.items():
         if not s.get(field):
             s.set(field, value)

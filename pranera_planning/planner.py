@@ -28,7 +28,9 @@ from frappe.utils import add_days, flt, getdate, today
 
 from pranera_planning.plan_math import allocate_lots, build_plan, scenario_rules
 from pranera_planning.reorder import _top_group, load_settings
-from pranera_planning.reorder_math import deepest, normalise_family, period_of, stock_project_name
+from pranera_planning.reorder_math import (
+    DEFAULT_STOCK_PATTERN, deepest, next_seq, normalise_family, period_of, stock_project_name,
+)
 from pranera_planning.reservation import (
     EPS, get_produced_owners, get_reservation_state, get_stock_locations, reservations_at, roll_tracked_items,
     same_project, stage_of,
@@ -215,13 +217,23 @@ def last_service(items):
 # ── made-to-stock projects ────────────────────────────────────────────────────
 
 def stock_project_for(item, made, settings, on):
+    """The made-to-stock project a line goes to. With {SEQ} in the pattern every new plan gets
+    its own project, numbered per family and period (…-Q4-01, …-Q4-02); without it, one project
+    per family and period is reused."""
     family = normalise_family(item.get("commercial_name")) or _top_group(item.item_group) or "STOCK"
     seasons = [(r.season, r.start_month) for r in (settings.get("seasons") or []) if r.season and r.start_month]
     year, label = period_of(on, settings.get("stock_project_period") or "Quarter", seasons)
-    name = stock_project_name(settings.get("stock_project_pattern"), year, family, label)
+    pattern = settings.get("stock_project_pattern") or DEFAULT_STOCK_PATTERN
+    kind = "Production" if made else "Purchase"
+    if "{SEQ}" in pattern:
+        before, after = stock_project_name(pattern, year, family, label).split("{SEQ}", 1)
+        taken = frappe.get_all("Project", filters={"project_name": ["like", f"{before}%{after}"]}, pluck="project_name")
+        name = stock_project_name(pattern, year, family, label, next_seq(pattern, year, family, label, taken))
+        return {"project": None, "project_name": name, "family": family, "period": label, "project_type": kind, "exists": False}
+    name = stock_project_name(pattern, year, family, label)
     existing = frappe.db.get_value("Project", {"project_name": name}, ["name", "project_type"], as_dict=True)
     return {"project": existing.name if existing else None, "project_name": name, "family": family, "period": label,
-            "project_type": "Production" if made else "Purchase", "exists": bool(existing)}
+            "project_type": kind, "exists": bool(existing)}
 
 
 # ── the proposal ──────────────────────────────────────────────────────────────
@@ -247,6 +259,13 @@ def propose(payload):
             frappe.throw(_("Project {0} not found.").format(project))
         groups = [({"project": p.name, "project_name": p.project_name, "project_type": p.project_type or "Production",
                     "exists": True, "customer": p.customer}, [{**ln, "mode": ln.get("mode") or "need"} for ln in lines])]
+    elif payload.get("project"):
+        # Re-planning an existing made-to-stock project (its own Plan tab): keep that project.
+        p = frappe.db.get_value("Project", payload["project"], ["name", "project_name", "project_type"], as_dict=True)
+        if not p:
+            frappe.throw(_("Project {0} not found.").format(payload["project"]))
+        groups = [({"project": p.name, "project_name": p.project_name, "project_type": p.project_type or "Production",
+                    "exists": True}, [{**ln, "mode": ln.get("mode") or "top_up"} for ln in lines])]
     else:
         info = item_info([ln["item"] for ln in lines])
         boms, _rows = bom_tree([ln["item"] for ln in lines], depth=1)

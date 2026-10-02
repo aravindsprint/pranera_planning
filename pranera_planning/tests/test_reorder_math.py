@@ -4,7 +4,7 @@ from datetime import date
 
 from pranera_planning.reorder_math import (
     cumulative_lead, stage_days_used, deepest, main_input, median, normalise_family, period_of, reorder_numbers, round_up,
-    stock_project_name,
+    stock_project_name, next_seq,
 )
 
 
@@ -93,7 +93,7 @@ class TestStockProjects(unittest.TestCase):
 
     def test_project_name(self):
         self.assertEqual(stock_project_name("{YY}STK-{FAMILY}-{PERIOD}", 2026, "2TF ECO 220", "Q4"), "26STK-2TF ECO 220-Q4")
-        self.assertEqual(stock_project_name(None, 2026, "YARN", "Q4"), "26STK-YARN-Q4")
+        self.assertEqual(stock_project_name(None, 2026, "YARN", "Q4", 1), "26STK-YARN-Q4-01")   # default has {SEQ}
 
 
 class TestGroupRulesAndBoms(unittest.TestCase):
@@ -110,6 +110,30 @@ class TestGroupRulesAndBoms(unittest.TestCase):
         self.assertEqual(main_input([("YRFPP090", 90, "Kgs", 1), ("YRSPE011", 10, "Kgs", 1)], "Kgs"), "YRFPP090")
         self.assertEqual(main_input([("X", 1, "Nos", 0), ("Y", 3, "Nos", 0)], "Kgs"), "Y")
         self.assertIsNone(main_input([], "Kgs"))
+
+
+
+class TestStockProjectSequence(unittest.TestCase):
+    P = "{YY}STK-{FAMILY}-{PERIOD}-{SEQ}"
+
+    def test_first_plan_of_a_family_and_period_is_01(self):
+        seq = next_seq(self.P, 2026, "2TF ECO 220", "Q4", [])
+        self.assertEqual(stock_project_name(self.P, 2026, "2TF ECO 220", "Q4", seq), "26STK-2TF ECO 220-Q4-01")
+
+    def test_second_plan_in_the_same_period_is_02(self):
+        seq = next_seq(self.P, 2026, "2TF ECO 220", "Q4", ["26STK-2TF ECO 220-Q4-01"])
+        self.assertEqual(stock_project_name(self.P, 2026, "2TF ECO 220", "Q4", seq), "26STK-2TF ECO 220-Q4-02")
+
+    def test_other_families_periods_and_gaps(self):
+        existing = ["26STK-2TF ECO 220-Q4-01", "26STK-2TF ECO 220-Q4-03", "26STK-2TF ECO 220-Q3-07",
+                    "26STK-2TF ECO 2200-Q4-09", "26STK-YARN-Q4-05", "26STK-2TF ECO 220-Q4"]
+        self.assertEqual(next_seq(self.P, 2026, "2TF ECO 220", "Q4", existing), 4)    # gaps aren't reused
+        self.assertEqual(next_seq(self.P, 2026, "YARN", "Q4", existing), 6)
+        self.assertEqual(next_seq(self.P, 2027, "2TF ECO 220", "Q1", existing), 1)
+
+    def test_a_pattern_without_seq_keeps_one_project_per_period(self):
+        self.assertIsNone(next_seq("{YY}STK-{FAMILY}-{PERIOD}", 2026, "YARN", "Q4", []))
+        self.assertEqual(stock_project_name("{YY}STK-{FAMILY}-{PERIOD}", 2026, "YARN", "Q4"), "26STK-YARN-Q4")
 
 
 if __name__ == "__main__":

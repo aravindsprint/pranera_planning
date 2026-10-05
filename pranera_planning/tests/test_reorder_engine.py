@@ -57,6 +57,7 @@ class TestReorderEngine(unittest.TestCase):
                                      {"SKF11355/WHITE/68OW", "DKF11355/WHITE/68OW", "GKF11355/GREIGE/28OW"})
         saved = {}
         E._save = lambda code, values: saved.__setitem__(code, values)
+        E.open_po_lines = lambda items: list(getattr(self, "po_lines", []))
 
         def rule(safety, cover):
             return _dict(safety_days=safety, cover_days=cover, round_to=25, demand_basis="Sales + Consumption", bought_lead_days=0)
@@ -89,6 +90,19 @@ class TestReorderEngine(unittest.TestCase):
         self.assertEqual((ypp["obtained"], ypp["lead_days"], ypp["reorder_level"], ypp["status"]), ("Bought", 10, 675, "OK"))
         self.assertEqual(ypp["family"], "YARN")                       # no Commercial Name: the group is the family
         self.assertEqual(saved["YRSPE011/GREIGE"]["family"], "YARN")  # "-" counts as none
+
+    def test_purchase_orders_due_after_the_lead_time_arrive_later(self):
+        # YRSPE011 (21 lead days from its Item) has 100 on order: due in 45 days, it doesn't count.
+        self.po_lines = [("YRSPE011/GREIGE", 100, "2026-11-14", "PO-0123")]
+        try:
+            _count, saved = self.run_engine()
+        finally:
+            self.po_lines = []
+        y = saved["YRSPE011/GREIGE"]
+        self.assertEqual((y["on_order"], y["arriving_later"]), (0, 100))
+        self.assertEqual(y["position"], 60)
+        self.assertIn("PO-0123", y["arriving_later_note"])
+        self.assertEqual(y["lead_source"], "Item's Lead Time Days")
 
     def test_bought_lead_days_only_when_asked(self):
         _c, saved = self.run_engine(include_bought=True)

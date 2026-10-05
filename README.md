@@ -303,3 +303,28 @@ linked both ways); a chosen project is linked instead, and one already tied to a
 refused on save. An amended order takes over the original's project. Cancelling closes a project
 the order created that nothing has used yet. Unticked orders (stock sales, Shopify, Unicommerce)
 are untouched. `sales_order.py`; patch `add_sales_order_mto_field`.
+
+## Supplier lead days and the Purchase Order lead time check
+
+A bought item's lead days come from a ranked list in Re-order Settings › Supplier lead days;
+each source can be switched off, and the first one switched on with a number wins:
+the item's Supplier Items row (`Item Supplier.lead_days`), the supplier's usual lead days
+(`Supplier.usual_lead_days`), the Item's Lead Time Days, the item-group rule. The supplier is
+the Purchase Order's own; otherwise the item's Default Supplier, else — as set — the supplier of
+its latest Purchase Order, the one it was bought from most, or none (`lead_time.py`; the ranking
+and date arithmetic are in `lead_math.py`). The settings page edits the two lead-day fields
+directly and has a Try an item box showing every source's value and which wins.
+
+- Re-order report: bought rows show where their lead days came from. Open Purchase Order
+  lines due after today + the item's lead days are *arriving later*: shown, but left out of
+  Position, so a far-off container doesn't hide a stock-out.
+- Plan tab: bought levels show the usual supplier and the arrival date of an order placed
+  today, with a warning when that is after Needed by.
+- Purchase Order (`purchase_order.py`, validate / before_submit / before_update_after_submit):
+  Required By earlier than the order date + this supplier's lead days − grace days gives a
+  notice on save and, in Block mode, refuses submit and Update Items. Only supplier lead days
+  block; item and group lead days only warn. Override: the Stock Reservation Settings roles,
+  with *Lead time override reason*, kept as a comment. Subcontracted orders are skipped.
+
+Patch `add_supplier_lead_days` adds the fields and starting values (all sources on, latest
+Purchase Order, Block, 0 grace days). Nothing changes until lead days are entered.

@@ -173,7 +173,12 @@
                       </div>
                       <div v-else class="sub">Manufacture request · {{ fmt(r.request) }} {{ r.uom }}</div>
                     </template>
-                    <div v-else class="sub">{{ r.request ? `Purchase request · ${fmt(r.request)} ${r.uom}` : 'nothing to buy' }}</div>
+                    <template v-else>
+                      <div class="sub">{{ r.request ? `Purchase request · ${fmt(r.request)} ${r.uom}` : 'nothing to buy' }}</div>
+                      <div v-if="r.request && r.arrives_by" class="sub" :title="r.lead_source">
+                        {{ r.supplier || 'Usual supplier' }} · {{ fmt(r.lead_days) }} days → arrives ~{{ day(r.arrives_by) }}
+                      </div>
+                    </template>
                   </td>
                 </tr>
               </tbody>
@@ -264,6 +269,7 @@ const busy = ref(false)
 const error = ref('')
 
 const fmt = (n, d = 0) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: d })
+const day = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '')
 const canCheck = computed(() => form.lines.some((l) => l.item && l.qty > 0) && (form.order_type === MTS || form.project))
 const createLabel = computed(() => {
   const res = proposals.value.reduce((a, p) => a + p.reservations.length, 0)

@@ -19,11 +19,15 @@ Numbers, per item:
   reserved   what active Project Stock Reservations still hold
   WIP        what open Work Orders and Subcontracting Orders are still expected to deliver
   on order   open Purchase Orders (not subcontracted) + submitted Material Requests not yet
-             ordered (Purchase and Manufacture)
+             ordered (Purchase and Manufacture). Purchase Order lines due after today + the
+             item's lead days are "arriving later": shown, but left out of Position, since an
+             order placed today would arrive first
   lead days  the item's stage days (Re-order Settings › Days used) + the stages below it, down
-             its default BOMs to its bought material — whose own lead days (Item.lead_time_days,
-             else the group rule's) count only for the bought item itself, unless
-             include_bought_lead_days is ticked
+             its default BOMs to its bought material — whose own lead days count only for the
+             bought item itself, unless include_bought_lead_days is ticked. A bought item's
+             lead days come from the ranked sources in Re-order Settings › Supplier lead days
+             (its supplier's Supplier Items row, the supplier's usual lead days, the Item's Lead
+             Time Days, the group rule), for its default supplier — see lead_time.py
 """
 import math
 from collections import defaultdict
@@ -32,6 +36,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, add_months, flt, getdate, now_datetime, today
 
+from pranera_planning.lead_math import later_note, split_on_order
 from pranera_planning.reorder_math import (
     cumulative_lead, deepest, main_input, median, normalise_family, reorder_numbers, stage_days_used,
 )
@@ -75,7 +80,13 @@ def load_settings():
         "rules": rules,
         "stage_days": stage_days,
         "include_bought": bool(s.get("include_bought_lead_days")),
+        "lead": lead_config(s),
     }
+
+
+def lead_config(s):
+    from pranera_planning.lead_time import load_config
+    return load_config(s)
 
 
 # ── the data ──────────────────────────────────────────────────────────────────
@@ -147,6 +158,21 @@ def wip(items):
             JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1 AND sco.status NOT IN {DONE}
             WHERE soi.item_code IN %(items)s GROUP BY soi.item_code""", items).items():
         out[item] += qty
+    return out
+
+
+def open_po_lines(items):
+    """[(item, open stock qty, Required By, Purchase Order)] of open, not subcontracted
+    Purchase Orders — for splitting On order into in time and arriving later."""
+    out = []
+    for chunk in _chunks(items):
+        out += [tuple(r) for r in frappe.db.sql(
+            f"""SELECT poi.item_code, GREATEST(poi.qty - poi.received_qty, 0) * IFNULL(NULLIF(poi.conversion_factor, 0), 1),
+                       poi.schedule_date, po.name
+                FROM `tabPurchase Order Item` poi
+                JOIN `tabPurchase Order` po ON po.name = poi.parent AND po.docstatus = 1
+                 AND po.status NOT IN {DONE + ('Delivered', 'On Hold')} AND IFNULL(po.is_subcontracted, 0) = 0
+                WHERE poi.item_code IN %(items)s AND poi.qty > poi.received_qty""", {"items": chunk})]
     return out
 
 
@@ -250,10 +276,12 @@ def calculate(items, cfg, sales=None, used=None):
 
     stage_of_item = {i: stage_of(i, (info.get(i) or bought_info.get(i) or {}).get("item_group")) for i in set(info) | set(bought_info)}
     stage_days = {i: cfg["stage_days"].get(str(stage_of_item.get(i, "")).lower(), 0) for i in made}
-    bought_days = {}
-    for code, it in list(info.items()) + list(bought_info.items()):
-        rule = rule_for(it.item_group)
-        bought_days[code] = flt(it.lead_time_days) or flt(rule.bought_lead_days if rule else 0)
+    bought_days, bought_lead = bought_leads(
+        {c: it for c, it in list(info.items()) + list(bought_info.items()) if c not in made},
+        lambda group: flt(getattr(rule_for(group), "bought_lead_days", 0) or 0), cfg.get("lead"))
+
+    item_lead = {code: cumulative_lead(code, stage_days, inputs, bought_days, cfg["include_bought"]) for code in items}
+    later, later_lines = split_on_order(open_po_lines(items), today(), item_lead)
 
     now = now_datetime()
     written = 0
@@ -264,12 +292,14 @@ def calculate(items, cfg, sales=None, used=None):
         rule = rule_for(it.item_group)
         basis = (rule.demand_basis if rule and rule.demand_basis else "Sales + Consumption")
         qty = (sales.get(code, 0) if "Sales" in basis else 0) + (used.get(code, 0) if "Consumption" in basis else 0)
-        lead = cumulative_lead(code, stage_days, inputs, bought_days, cfg["include_bought"])
+        lead = item_lead[code]
+        arriving_later = min(flt(later.get(code)), flt(ordered.get(code)))
         safety_days = flt(rule.safety_days) if rule and rule.safety_days is not None and rule.safety_days != "" else cfg["safety_days"]
         cover_days = flt(rule.cover_days) if rule and rule.cover_days else cfg["cover_days"]
         round_to = flt(rule.round_to) if rule and rule.round_to else cfg["round_to"]
         n = reorder_numbers(qty, cfg["history_days"], lead, safety_days, cover_days,
-                            stores.get(code, 0), held.get(code, 0), making.get(code, 0), ordered.get(code, 0),
+                            stores.get(code, 0), held.get(code, 0), making.get(code, 0),
+                            ordered.get(code, 0) - arriving_later,
                             round_to, cfg["near_margin"])
         family = normalise_family(it.get("commercial_name")) or _top_group(it.item_group)
         values = {
@@ -278,11 +308,22 @@ def calculate(items, cfg, sales=None, used=None):
             "stock_uom": it.stock_uom, "demand_basis": basis, "demand_qty": qty, "lead_days": lead,
             "safety_days": safety_days, "cover_days": cover_days, "round_to": round_to,
             "in_stores": stores.get(code, 0), "reserved": held.get(code, 0), "wip": making.get(code, 0),
-            "on_order": ordered.get(code, 0), "calculated_on": now, **n,
+            "on_order": ordered.get(code, 0) - arriving_later, "arriving_later": arriving_later,
+            "arriving_later_note": later_note(later_lines.get(code, []), it.stock_uom) if arriving_later else "",
+            "supplier": (bought_lead.get(code) or {}).get("supplier") if code not in made else None,
+            "lead_source": (bought_lead.get(code) or {}).get("text", "") if code not in made else "",
+            "calculated_on": now, **n,
         }
         _save(code, values)
         written += 1
     return written
+
+
+def bought_leads(info, group_days, lead_cfg=None):
+    """({item: lead days}, {item: lead_time.resolve row}) for bought items."""
+    from pranera_planning.lead_time import resolve
+    rows = resolve(list(info), info, group_days, lead_cfg)
+    return {code: r["days"] for code, r in rows.items()}, rows
 
 
 _TOP = {}

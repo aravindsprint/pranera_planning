@@ -97,7 +97,8 @@
                 </td>
                 <td class="num">{{ fmt(r.avg_daily, 2) }}</td>
                 <td class="num">
-                  <span v-if="r.lead_missing" class="badge badge-warning" title="No lead days set for this item's stage">0</span>
+                  <span v-if="r.lead_missing" class="badge badge-warning"
+                        :title="r.obtained === 'Made' ? 'No lead days set for this item\'s stage' : 'No lead days found for this bought item: set its supplier\'s lead days'">0</span>
                   <span v-else>{{ fmt(r.lead_days) }}</span>
                 </td>
                 <td class="num">{{ fmt(r.safety_qty) }}</td>
@@ -108,7 +109,9 @@
                 <td class="num">{{ fmt(r.reserved) }}</td>
                 <td class="num">{{ fmt(r.free) }}</td>
                 <td class="num">{{ fmt(r.wip) }}</td>
-                <td class="num">{{ fmt(r.on_order) }}</td>
+                <td class="num">{{ fmt(r.on_order) }}
+                  <div v-if="r.arriving_later" class="later" :title="r.arriving_later_note">+{{ fmt(r.arriving_later) }} later</div>
+                </td>
                 <td class="num"><b>{{ fmt(r.position) }}</b></td>
                 <td><span class="badge" :class="badge(r.status)">{{ r.status }}</span></td>
                 <td class="num"><b v-if="r.suggest_qty">{{ fmt(r.suggest_qty) }}</b><span v-else class="muted">—</span></td>
@@ -128,7 +131,8 @@
                       <div class="workings__h">How the level is worked out</div>
                       <div class="wl"><span>Demand in the last {{ data.settings.history_days }} days ({{ r.demand_basis }})</span><b>{{ fmt(r.demand_qty) }}</b></div>
                       <div class="wl"><span>Avg / day = {{ fmt(r.demand_qty) }} ÷ {{ data.settings.history_days }}</span><b>{{ fmt(r.avg_daily, 2) }}</b></div>
-                      <div class="wl"><span>Lead days{{ r.obtained === 'Made' ? ' (this stage + the stages below it)' : ' (supplier)' }}</span><b>{{ fmt(r.lead_days) }}</b></div>
+                      <div class="wl"><span>Lead days{{ r.obtained === 'Made' ? ' (this stage + the stages below it)' : '' }}<template
+                        v-if="r.obtained !== 'Made' && r.lead_source">: {{ r.lead_source }}</template></span><b>{{ fmt(r.lead_days) }}</b></div>
                       <div class="wl"><span>Safety = {{ fmt(r.avg_daily, 2) }} × {{ fmt(r.safety_days) }} safety days</span><b>{{ fmt(r.safety_qty) }}</b></div>
                       <div class="wl"><span>Re-order level = {{ fmt(r.avg_daily, 2) }} × {{ fmt(r.lead_days) }} + {{ fmt(r.safety_qty) }}</span><b>{{ fmt(r.reorder_level) }}</b></div>
                       <div class="wl"><span>Re-order qty = {{ fmt(r.avg_daily, 2) }} × {{ fmt(r.cover_days) }} cover days</span><b>{{ fmt(r.reorder_qty) }}</b></div>
@@ -138,7 +142,8 @@
                       <div class="workings__h">Where it stands</div>
                       <div class="wl"><span>Free = {{ fmt(r.in_stores) }} in stores − {{ fmt(r.reserved) }} reserved for orders</span><b>{{ fmt(r.free) }}</b></div>
                       <div class="wl"><span>+ WIP (what open orders will still deliver)</span><b>{{ fmt(r.wip) }}</b></div>
-                      <div class="wl"><span>+ On order (open Purchase Orders + Material Requests)</span><b>{{ fmt(r.on_order) }}</b></div>
+                      <div class="wl"><span>+ On order (open Purchase Orders + Material Requests){{ r.arriving_later ? ', due in time' : '' }}</span><b>{{ fmt(r.on_order) }}</b></div>
+                      <div v-if="r.arriving_later" class="wl muted"><span>Not counted, arriving after a new order would: {{ r.arriving_later_note }}</span><b>{{ fmt(r.arriving_later) }}</b></div>
                       <div class="wl"><span>Position</span><b>{{ fmt(r.position) }}</b></div>
                       <div v-if="r.suggest_qty" class="wl"><span>Suggest = {{ fmt(r.max_level) }} − {{ fmt(r.position) }}, rounded up to {{ fmt(r.round_to) }}</span><b>{{ fmt(r.suggest_qty) }}</b></div>
                       <div class="wl muted"><span>Calculated {{ when(r.calculated_on) }}</span>
@@ -258,6 +263,7 @@ onMounted(load)
 .badge-muted { background: var(--slate-100); color: var(--slate-500); }
 tr.open td { background: var(--slate-50, #f8fafc); }
 .detail-row td { background: var(--slate-50, #f8fafc); }
+.later { font-size: 11px; color: #9a3412; white-space: nowrap; }
 .workings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 6px 0 12px; }
 .workings__h { font-weight: 650; margin-bottom: 6px; }
 .wl { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px dashed var(--slate-200); }

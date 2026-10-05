@@ -97,6 +97,120 @@
           <button v-if="s.can_write" class="btn btn-outline add" @click="s.stage_leads.push({ stage: '', route: 'In-house' })">+ Add stage</button>
         </section>
 
+        <!-- Supplier lead days -->
+        <section class="card">
+          <div class="card__head"><h2 class="h2">Supplier lead days</h2><span class="sub">For bought items: yarn, chemicals, trims.</span></div>
+          <p v-if="!s.lead_fields_ready" class="warn-line">The supplier lead day fields aren't installed yet: run bench migrate.</p>
+
+          <div class="lead-grid">
+            <div>
+              <h3 class="h3">Where lead days come from</h3>
+              <p class="hint">The first source switched on that has a number wins.</p>
+              <ol class="ranks">
+                <li v-for="(r, i) in s.lead_sources" :key="r.source" :class="{ off: !r.enabled }">
+                  <span class="rank">{{ i + 1 }}</span>
+                  <label class="rank__name">
+                    <input v-model="r.enabled" type="checkbox" :true-value="1" :false-value="0" :disabled="!s.can_write" />
+                    <span><b>{{ r.source }}</b><br /><span class="hint">{{ SOURCE_HINT[r.source] }}</span></span>
+                  </label>
+                  <span v-if="s.can_write" class="rank__move">
+                    <button class="icon-btn" :disabled="i === 0" :aria-label="`Move ${r.source} up`" @click="move(i, -1)"><i class="pi pi-arrow-up"></i></button>
+                    <button class="icon-btn" :disabled="i === s.lead_sources.length - 1" :aria-label="`Move ${r.source} down`" @click="move(i, 1)"><i class="pi pi-arrow-down"></i></button>
+                  </span>
+                </li>
+              </ol>
+              <p v-if="!s.lead_sources.some((r) => r.enabled)" class="warn-line">Switch on at least one source, or no bought item has lead days.</p>
+            </div>
+
+            <div>
+              <div class="field">
+                <label class="form-label" for="rs-nodef">When an item has no default supplier</label>
+                <select id="rs-nodef" v-model="s.no_default_supplier" class="form-input" :disabled="!s.can_write">
+                  <option v-for="o in FALLBACKS" :key="o" :value="o">{{ o }}</option>
+                </select>
+                <span class="hint">{{ FALLBACK_HINT[s.no_default_supplier] }} The default supplier is set on the Item, under Item Defaults.</span>
+              </div>
+
+              <div class="try">
+                <h3 class="h3">Try an item</h3>
+                <div class="try__row">
+                  <LinkField v-model="tryItem" doctype="Item" placeholder="Item code" />
+                  <LinkField v-model="trySupplier" doctype="Supplier" placeholder="Supplier (optional)" />
+                  <button class="btn btn-outline" :disabled="!tryItem || tryBusy" @click="runTry">{{ tryBusy ? 'Checking…' : 'Check' }}</button>
+                </div>
+                <p class="hint">Uses the order above as it is now, saved or not, and the lead days as saved.</p>
+                <p v-if="tryError" class="warn-line">{{ tryError }}</p>
+                <div v-if="tryResult" class="try__out">
+                  <div class="sub">
+                    <template v-if="tryResult.supplier">Supplier {{ tryResult.supplier }}
+                      ({{ tryResult.supplier_from === 'default' ? 'default supplier' : tryResult.supplier_from }})</template>
+                    <template v-else>No supplier found: only the item and group sources can apply.</template>
+                  </div>
+                  <table class="data-table compact">
+                    <tbody>
+                      <tr v-for="r in tryResult.sources" :key="r.source" :class="{ off: !r.enabled }">
+                        <td>{{ r.source }}<span v-if="!r.enabled" class="sub"> · off</span></td>
+                        <td class="num">{{ r.value ? `${fmt(r.value)} days` : '—' }}</td>
+                        <td class="act"><span v-if="r.source === tryResult.winner" class="badge badge-info">used</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div class="try__total"><b>{{ tryResult.days ? `${fmt(tryResult.days)} days` : 'No lead days' }}</b> for {{ tryResult.item }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lead-grid">
+            <div>
+              <h3 class="h3">Suppliers</h3>
+              <table class="data-table">
+                <thead><tr><th>Supplier</th><th class="num">Usual lead days</th><th></th></tr></thead>
+                <tbody>
+                  <tr v-if="!s.supplier_leads.length"><td colspan="3" class="empty">None yet, e.g. a China supplier 45, an Indian mill 15.</td></tr>
+                  <tr v-for="(r, i) in s.supplier_leads" :key="`sl${i}`">
+                    <td class="wide"><LinkField v-model="r.supplier" doctype="Supplier" placeholder="Supplier" :disabled="!s.can_write" /></td>
+                    <td class="num"><input v-model.number="r.usual_lead_days" type="number" min="0" step="1" class="form-input n" :disabled="!s.can_write" /></td>
+                    <td class="act"><button v-if="s.can_write" class="icon-btn" :aria-label="`Remove supplier ${i + 1}`" @click="s.supplier_leads.splice(i, 1)"><i class="pi pi-times"></i></button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <button v-if="s.can_write && s.lead_fields_ready" class="btn btn-outline add" @click="s.supplier_leads.push({ supplier: '', usual_lead_days: null })">+ Add supplier</button>
+            </div>
+            <div>
+              <h3 class="h3">One item from one supplier</h3>
+              <table class="data-table">
+                <thead><tr><th>Item</th><th>Supplier</th><th class="num">Lead days</th><th></th></tr></thead>
+                <tbody>
+                  <tr v-if="!s.item_supplier_leads.length"><td colspan="4" class="empty">Only where an item differs from its supplier's usual days, e.g. melange 45.</td></tr>
+                  <tr v-for="(r, i) in s.item_supplier_leads" :key="`il${i}`">
+                    <td><LinkField v-model="r.item_code" doctype="Item" placeholder="Item" :disabled="!s.can_write" /></td>
+                    <td><LinkField v-model="r.supplier" doctype="Supplier" placeholder="Supplier" :disabled="!s.can_write" /></td>
+                    <td class="num"><input v-model.number="r.lead_days" type="number" min="0" step="1" class="form-input n" :disabled="!s.can_write" /></td>
+                    <td class="act"><button v-if="s.can_write" class="icon-btn" :aria-label="`Remove item row ${i + 1}`" @click="s.item_supplier_leads.splice(i, 1)"><i class="pi pi-times"></i></button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <button v-if="s.can_write && s.lead_fields_ready" class="btn btn-outline add" @click="s.item_supplier_leads.push({ item_code: '', supplier: '', lead_days: null })">+ Add item</button>
+            </div>
+          </div>
+          <p class="hint">These are the Supplier's <i>Usual lead days</i> and the Item's Supplier Items <i>Lead days</i>: desk shows the same numbers.</p>
+
+          <h3 class="h3 gap">Purchase Order check</h3>
+          <div class="grid">
+            <div class="field"><label class="form-label" for="rs-pocheck">When Required By is too early</label>
+              <select id="rs-pocheck" v-model="s.lead_time_check" class="form-input" :disabled="!s.can_write">
+                <option v-for="o in CHECKS" :key="o" :value="o">{{ o }}</option></select>
+              <span class="hint">{{ CHECK_HINT[s.lead_time_check] }}</span></div>
+            <div class="field"><label class="form-label" for="rs-grace">Grace days</label>
+              <input id="rs-grace" v-model.number="s.lead_time_grace_days" type="number" min="0" step="1" class="form-input" :disabled="!s.can_write" />
+              <span class="hint">A line this many days short still passes.</span></div>
+            <div class="field"><span class="form-label">Who may override</span>
+              <span class="hint">The same roles as the free-stock check, with a reason that is kept on the order.
+                <a :href="deskUrl('/app/stock-reservation-settings')" target="_blank">Stock Reservation Settings</a></span></div>
+          </div>
+        </section>
+
         <!-- Plans -->
         <section class="card">
           <h2 class="h2">Plans</h2>
@@ -153,6 +267,24 @@ import { APP_BASE } from '@/config/app'
 import { deskUrl } from '@/config/backend'
 
 const DEMAND = ['Sales + Consumption', 'Sales', 'Consumption']
+const SOURCE_HINT = {
+  'Supplier Items row': 'This item from this supplier: the Item\'s Supplier Items table.',
+  "Supplier's usual lead days": 'Every item from this supplier.',
+  "Item's Lead Time Days": 'The Item\'s own number, whoever supplies it.',
+  'Item-group rule': 'Lead days when bought, in Per item group above.',
+}
+const FALLBACKS = ['Latest Purchase Order', 'Most bought from', 'No supplier']
+const FALLBACK_HINT = {
+  'Latest Purchase Order': 'The supplier of the item\'s most recent submitted Purchase Order.',
+  'Most bought from': 'The supplier it was bought from most in the last months set under Learn from the last (months).',
+  'No supplier': 'The supplier sources are skipped: the item\'s own or its group\'s lead days count.',
+}
+const CHECKS = ['Block', 'Warn', 'Off']
+const CHECK_HINT = {
+  Block: 'Submitting is refused when Required By is earlier than the order date + the supplier\'s lead days. Item and group lead days only warn.',
+  Warn: 'An orange notice only; the order goes through.',
+  Off: 'No check.',
+}
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
 const s = ref(null)
 const loading = ref(false)
@@ -160,6 +292,12 @@ const busy = ref(false)
 const error = ref('')
 const saved = ref('')
 const dirty = ref(false)
+const tryItem = ref('')
+const trySupplier = ref('')
+const tryResult = ref(null)
+const tryBusy = ref(false)
+const tryError = ref('')
+const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })
 let original = ''
 
 const when = (t) => (t ? new Date(String(t).replace(' ', 'T')).toLocaleString() : '—')
@@ -215,6 +353,25 @@ async function save() {
     busy.value = false
   }
 }
+function move(i, d) {
+  const list = s.value.lead_sources
+  ;[list[i], list[i + d]] = [list[i + d], list[i]]
+}
+async function runTry() {
+  tryBusy.value = true
+  tryError.value = ''
+  tryResult.value = null
+  try {
+    tryResult.value = await callMessage('pranera_planning.api.reorder_settings.explain_lead', {
+      item: tryItem.value, supplier: trySupplier.value || null,
+      sources: s.value.lead_sources, no_default_supplier: s.value.no_default_supplier,
+    })
+  } catch (e) {
+    tryError.value = e.message
+  } finally {
+    tryBusy.value = false
+  }
+}
 async function recalculate() {
   busy.value = true
   error.value = ''
@@ -255,5 +412,25 @@ td.wide { min-width: 240px; }
 .preview { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .preview code { background: var(--slate-100); padding: 3px 8px; border-radius: 6px; font-size: 13px; }
 .seasons { max-width: 520px; }
+.h3 { margin: 0 0 6px; font-size: 14px; font-weight: 650; }
+.h3.gap { margin-top: 18px; }
+.lead-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px 28px; margin-bottom: 14px; }
+.ranks { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--slate-200); border-radius: 8px; }
+.ranks li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
+.ranks li + li { border-top: 1px solid var(--slate-200); }
+.ranks li.off .rank__name b, .ranks li.off .rank { color: var(--slate-400); }
+.rank { width: 22px; height: 22px; border-radius: 50%; background: var(--slate-100); display: inline-flex;
+  align-items: center; justify-content: center; font-size: 12px; font-weight: 650; flex: none; }
+.rank__name { display: flex; gap: 10px; align-items: flex-start; flex: 1; font-size: 14px; cursor: pointer; }
+.rank__name input { margin-top: 3px; }
+.rank__move { display: flex; gap: 2px; }
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.try { margin-top: 16px; }
+.try__row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: start; }
+.try__out { margin-top: 8px; }
+.try__total { margin-top: 6px; font-size: 14px; }
+.data-table.compact td { padding-top: 6px; padding-bottom: 6px; }
+tr.off td { color: var(--slate-400); }
+@media (max-width: 640px) { .try__row { grid-template-columns: 1fr; } }
 .alert-success { background: #ecfdf3; border: 1px solid #bbe5c8; color: #166534; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
 </style>

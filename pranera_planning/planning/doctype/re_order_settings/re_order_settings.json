@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-30 18:00:00.000000",
- "modified": "2026-10-02 12:00:00.000000",
+ "modified": "2026-10-05 10:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -180,6 +180,46 @@
    "label": "Items calculated",
    "fieldtype": "Int",
    "read_only": 1
+  },
+  {
+   "fieldname": "supplier_lead_section",
+   "label": "Supplier lead days",
+   "fieldtype": "Section Break",
+   "description": "Where a bought item's lead days come from: the first source switched on that has a number wins. Supplier lead days themselves are entered on the Supplier (Usual lead days) and on the Item's Supplier Items rows (Lead days) — or on the planning app's Re-order Settings page."
+  },
+  {
+   "fieldname": "lead_sources",
+   "label": "Sources, in order",
+   "fieldtype": "Table",
+   "options": "Re-order Lead Source"
+  },
+  {
+   "fieldname": "column_break_l",
+   "label": "",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "no_default_supplier",
+   "label": "When an item has no default supplier",
+   "fieldtype": "Select",
+   "options": "Latest Purchase Order\nMost bought from\nNo supplier",
+   "default": "Latest Purchase Order",
+   "description": "Which supplier's lead days count for an item without a Default Supplier. Most bought from looks back over Learn from the last (months)."
+  },
+  {
+   "fieldname": "lead_time_check",
+   "label": "Purchase Order lead time check",
+   "fieldtype": "Select",
+   "options": "Off\nWarn\nBlock",
+   "default": "Block",
+   "description": "Block: a Purchase Order can't be submitted when a line's Required By is earlier than the order date + the supplier's lead days. Only supplier lead days block; item and group lead days only warn. Override roles are the ones in Stock Reservation Settings."
+  },
+  {
+   "fieldname": "lead_time_grace_days",
+   "label": "Grace days",
+   "fieldtype": "Int",
+   "default": "0",
+   "description": "A line this many days short still passes."
   }
  ],
  "field_order": [
@@ -197,6 +237,12 @@
   "use_learned_lead_days",
   "include_bought_lead_days",
   "stage_leads",
+  "supplier_lead_section",
+  "lead_sources",
+  "column_break_l",
+  "no_default_supplier",
+  "lead_time_check",
+  "lead_time_grace_days",
   "plan_section",
   "default_warehouse",
   "stock_section",

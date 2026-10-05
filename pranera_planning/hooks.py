@@ -61,6 +61,14 @@ doc_events = {
         "on_submit": "pranera_planning.sales_order.on_submit",
         "on_cancel": "pranera_planning.sales_order.on_cancel",
     },
+    # Lead time check: a line's Required By can't be earlier than the order date + the
+    # supplier's lead days (Re-order Settings › Supplier lead days). Also when Update Items
+    # changes dates on a submitted order.
+    "Purchase Order": {
+        "validate": "pranera_planning.purchase_order.check_lead_time",
+        "before_submit": "pranera_planning.purchase_order.check_lead_time",
+        "before_update_after_submit": "pranera_planning.purchase_order.check_lead_time",
+    },
     "Roll Wise Pick List": {
         "on_submit": "pranera_planning.reservation.refresh_from_pick_list",
         "on_cancel": "pranera_planning.reservation.refresh_from_pick_list",
@@ -90,4 +98,5 @@ after_install = [
     "pranera_planning.patches.setup_planning_fields.execute",
     "pranera_planning.patches.add_saved_plan_field.execute",
     "pranera_planning.patches.add_sales_order_mto_field.execute",
+    "pranera_planning.patches.add_supplier_lead_days.execute",
 ]

@@ -20,6 +20,7 @@ Per item:
 Roll items are reserved roll by roll; their unnumbered stock can't be reserved, so it isn't offered.
 """
 import json
+import math
 from collections import defaultdict
 
 import frappe
@@ -55,7 +56,7 @@ def item_info(codes):
     codes = list({c for c in codes if c})
     if not codes:
         return {}
-    fields = ["name", "item_name", "item_group", "stock_uom", "is_stock_item", "has_batch_no"]
+    fields = ["name", "item_name", "item_group", "stock_uom", "is_stock_item", "has_batch_no", "lead_time_days"]
     if _has("Item", "commercial_name"):
         fields.append("commercial_name")
     return {i.name: i for i in frappe.get_all("Item", filters={"name": ["in", codes]}, fields=fields)}
@@ -386,12 +387,47 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "coming_from": come_src.get(code, []), "held": held_here,
                        "reserve_from": sorted({l["project"] for l in borrow_lots[code]})[:3] if r["reserve"] > EPS else []})
 
+    # bought levels: when the usual supplier would deliver an order placed today
+    arrivals = bought_arrivals([l["item"] for l in levels if not l["made"]], info, gbounds, cfg)
+    for l in levels:
+        a = arrivals.get(l["item"])
+        if l["made"] or not a:
+            continue
+        l.update(a)
+        if l["request"] > EPS and a["arrives_by"] and getdate(a["arrives_by"]) > getdate(needed_by):
+            who = a["supplier"] or _("its supplier")
+            warnings.append(_("{0}: needed by {1}, but {2} usually takes {3} days, so an order placed today arrives "
+                              "around {4}. Move Needed by, or buy from a faster supplier.").format(
+                l["item"], needed_by, who, _days(a["lead_days"]), a["arrives_by"]))
+
     return {"project": proj, "order_type": order_type, "rules": rules, "needed_by": needed_by,
             "sales_order": payload.get("sales_order") if order_type == MTO else None,
             "lines": lines, "levels": levels, "reservations": reservations, "requests": requests, "warnings": warnings,
             "totals": {"own": sum(l["own"] for l in levels), "coming": sum(l["coming"] for l in levels),
                        "reserve": sum(l["reserve"] for l in levels),
                        "requests": sum(1 for k in requests if requests[k]), "request_lines": sum(len(v) for v in requests.values())}}
+
+
+def _days(x):
+    return int(x) if float(x).is_integer() else x
+
+
+def bought_arrivals(codes, info, gbounds, cfg):
+    """{item: {"lead_days", "arrives_by", "supplier", "lead_source"}} for bought items, with
+    their usual supplier (Re-order Settings › Supplier lead days); arrives_by is None when no
+    lead days are set anywhere."""
+    codes = [c for c in codes if c]
+    if not codes:
+        return {}
+    from pranera_planning.lead_time import resolve
+
+    def group_days(group):
+        return flt(getattr(deepest(gbounds.get(group), cfg["rules"]), "bought_lead_days", 0) or 0)
+    out = {}
+    for code, r in resolve(codes, {c: info.get(c) or {} for c in codes}, group_days, cfg.get("lead")).items():
+        out[code] = {"lead_days": r["days"], "arrives_by": str(add_days(today(), math.ceil(r["days"]))) if r["days"] else None,
+                     "supplier": r["supplier"], "lead_source": r["text"]}
+    return out
 
 
 # ── create ────────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ FIELDS = [
     "demand_basis", "demand_qty", "avg_daily", "lead_days", "safety_days", "cover_days", "round_to",
     "safety_qty", "reorder_level", "reorder_qty", "max_level", "in_stores", "reserved", "free", "wip",
     "on_order", "position", "suggest_qty", "calculated_on",
+    "supplier", "lead_source", "arriving_later", "arriving_later_note",
 ]
 
 
@@ -46,7 +47,7 @@ def get_reorder_report(status=None, item_group=None, obtained=None, search=None,
                           limit_page_length=int(limit or 500))
     for r in rows:
         r["item_code"] = r.pop("name")
-        r["lead_missing"] = r.obtained == "Made" and flt(r.lead_days) <= 0
+        r["lead_missing"] = flt(r.lead_days) <= 0 and (r.obtained == "Made" or flt(r.avg_daily) > 0)
     rank = {s: i for i, s in enumerate(STATUS_ORDER)}
     rows.sort(key=lambda r: (rank.get(r.status, 9), -flt(r.suggest_qty), r["item_code"]))
 

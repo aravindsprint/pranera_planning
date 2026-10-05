@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-30 18:00:00.000000",
- "modified": "2026-09-30 18:00:00.000000",
+ "modified": "2026-10-05 10:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -241,6 +241,32 @@
    "label": "Calculated on",
    "fieldtype": "Datetime",
    "read_only": 1
+  },
+  {
+   "fieldname": "supplier",
+   "label": "Supplier",
+   "fieldtype": "Link",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lead_source",
+   "label": "Lead days from",
+   "fieldtype": "Data",
+   "read_only": 1
+  },
+  {
+   "fieldname": "arriving_later",
+   "label": "Arriving later",
+   "fieldtype": "Float",
+   "read_only": 1,
+   "description": "Open Purchase Orders due after a new order placed today would arrive: not counted in Position."
+  },
+  {
+   "fieldname": "arriving_later_note",
+   "label": "Arriving later on",
+   "fieldtype": "Small Text",
+   "read_only": 1
   }
  ],
  "field_order": [
@@ -257,6 +283,8 @@
   "demand_qty",
   "avg_daily",
   "lead_days",
+  "supplier",
+  "lead_source",
   "safety_days",
   "cover_days",
   "round_to",
@@ -271,6 +299,8 @@
   "free",
   "wip",
   "on_order",
+  "arriving_later",
+  "arriving_later_note",
   "position",
   "suggest_qty",
   "calculated_on"

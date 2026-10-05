@@ -68,6 +68,15 @@ export const pages = [
   },
 
   {
+    path: 'supplier-lead-days',
+    title: 'Supplier Lead Days',
+    icon: 'pi pi-truck',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/supplier-lead-days/SupplierLeadDaysPage.vue'),
+  },
+
+  {
     path: 'settings',
     title: 'Settings',
     icon: 'pi pi-cog',

@@ -100,7 +100,6 @@
         <!-- Supplier lead days -->
         <section class="card">
           <div class="card__head"><h2 class="h2">Supplier lead days</h2><span class="sub">For bought items: yarn, chemicals, trims.</span></div>
-          <p v-if="!s.lead_fields_ready" class="warn-line">The supplier lead day fields aren't installed yet: run bench migrate.</p>
 
           <div class="lead-grid">
             <div>
@@ -161,40 +160,13 @@
             </div>
           </div>
 
-          <div class="lead-grid">
-            <div>
-              <h3 class="h3">Suppliers</h3>
-              <table class="data-table">
-                <thead><tr><th>Supplier</th><th class="num">Usual lead days</th><th></th></tr></thead>
-                <tbody>
-                  <tr v-if="!s.supplier_leads.length"><td colspan="3" class="empty">None yet, e.g. a China supplier 45, an Indian mill 15.</td></tr>
-                  <tr v-for="(r, i) in s.supplier_leads" :key="`sl${i}`">
-                    <td class="wide"><LinkField v-model="r.supplier" doctype="Supplier" placeholder="Supplier" :disabled="!s.can_write" /></td>
-                    <td class="num"><input v-model.number="r.usual_lead_days" type="number" min="0" step="1" class="form-input n" :disabled="!s.can_write" /></td>
-                    <td class="act"><button v-if="s.can_write" class="icon-btn" :aria-label="`Remove supplier ${i + 1}`" @click="s.supplier_leads.splice(i, 1)"><i class="pi pi-times"></i></button></td>
-                  </tr>
-                </tbody>
-              </table>
-              <button v-if="s.can_write && s.lead_fields_ready" class="btn btn-outline add" @click="s.supplier_leads.push({ supplier: '', usual_lead_days: null })">+ Add supplier</button>
-            </div>
-            <div>
-              <h3 class="h3">One item from one supplier</h3>
-              <table class="data-table">
-                <thead><tr><th>Item</th><th>Supplier</th><th class="num">Lead days</th><th></th></tr></thead>
-                <tbody>
-                  <tr v-if="!s.item_supplier_leads.length"><td colspan="4" class="empty">Only where an item differs from its supplier's usual days, e.g. melange 45.</td></tr>
-                  <tr v-for="(r, i) in s.item_supplier_leads" :key="`il${i}`">
-                    <td><LinkField v-model="r.item_code" doctype="Item" placeholder="Item" :disabled="!s.can_write" /></td>
-                    <td><LinkField v-model="r.supplier" doctype="Supplier" placeholder="Supplier" :disabled="!s.can_write" /></td>
-                    <td class="num"><input v-model.number="r.lead_days" type="number" min="0" step="1" class="form-input n" :disabled="!s.can_write" /></td>
-                    <td class="act"><button v-if="s.can_write" class="icon-btn" :aria-label="`Remove item row ${i + 1}`" @click="s.item_supplier_leads.splice(i, 1)"><i class="pi pi-times"></i></button></td>
-                  </tr>
-                </tbody>
-              </table>
-              <button v-if="s.can_write && s.lead_fields_ready" class="btn btn-outline add" @click="s.item_supplier_leads.push({ item_code: '', supplier: '', lead_days: null })">+ Add item</button>
-            </div>
+          <div class="lead-link">
+            <span v-if="s.supplier_lead_counts?.ready">
+              Lead days are set for {{ s.supplier_lead_counts.suppliers }} suppliers and {{ s.supplier_lead_counts.items }} item exceptions.
+            </span>
+            <span v-else class="warn-line">The supplier lead day fields aren't installed yet: run bench migrate.</span>
+            <a class="btn btn-outline" :href="`${APP_BASE}/supplier-lead-days`">Edit supplier lead days</a>
           </div>
-          <p class="hint">These are the Supplier's <i>Usual lead days</i> and the Item's Supplier Items <i>Lead days</i>: desk shows the same numbers.</p>
 
           <h3 class="h3 gap">Purchase Order check</h3>
           <div class="grid">
@@ -426,6 +398,8 @@ td.wide { min-width: 240px; }
 .rank__move { display: flex; gap: 2px; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .try { margin-top: 16px; }
+.lead-link { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 8px; font-size: 13px; }
 .try__row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: start; }
 .try__out { margin-top: 8px; }
 .try__total { margin-top: 6px; font-size: 14px; }

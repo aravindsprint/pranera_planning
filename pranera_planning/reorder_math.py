@@ -57,24 +57,59 @@ def reorder_numbers(demand_qty, history_days, lead_days, safety_days, cover_days
     }
 
 
-def stage_days_used(rows, use_learned=False):
-    """{stage (lower case): lead days} from the settings' stage rows
-    [{"stage", "route", "inhouse_days", "jobwork_days", "override_days"}].
+ROUTES = ("In-house", "Job work")
 
-    Days used (override_days) counts. Learned medians count only when use_learned is on and
-    Days used is empty — the usual route's figure, else whichever exists. Rounded up to whole
-    days; a stage with no days is left out (its items get none, and the report flags them).
-    """
+
+def route_days(row, route, use_learned=False):
+    """Lead days of one route of a stage row: the days entered for that route (In-house days =
+    override_days, Job work days = jobwork_override_days), else — when use_learned is on — that
+    route's learned median. Rounded up to whole days; None when there is none."""
+    job = route == "Job work"
+    for days in (row.get("jobwork_override_days") if job else row.get("override_days"),
+                 (row.get("jobwork_days") if job else row.get("inhouse_days")) if use_learned else None):
+        if days and float(days) > 0:
+            return math.ceil(round(float(days), 6))
+    return None
+
+
+def stage_route_days(rows, use_learned=False):
+    """{stage (lower case): {"In-house": days | None, "Job work": days | None}}."""
     out = {}
     for r in rows:
         stage = str(r.get("stage") or "").strip().lower()
-        days = r.get("override_days")
-        if not days and use_learned:
-            first = r.get("jobwork_days") if (r.get("route") or "") == "Job work" else r.get("inhouse_days")
-            days = first or r.get("inhouse_days") or r.get("jobwork_days")
-        if stage and days and float(days) > 0:
-            out[stage] = math.ceil(round(float(days), 6))
+        if stage:
+            out[stage] = {route: route_days(r, route, use_learned) for route in ROUTES}
     return out
+
+
+def stage_days_used(rows, use_learned=False):
+    """{stage (lower case): lead days} for the re-order report, from the settings' stage rows
+    [{"stage", "route", "override_days", "jobwork_override_days", "inhouse_days", "jobwork_days"}].
+
+    Each stage counts the days of its usual route; when that route has none, the other route's
+    (better than no lead time at all). Learned medians count only when use_learned is on and
+    no days are entered for that route. A stage with no days at all is left out (its items get
+    none, and the report flags them)."""
+    out = {}
+    for r in rows:
+        stage = str(r.get("stage") or "").strip().lower()
+        usual = "Job work" if (r.get("route") or "") == "Job work" else "In-house"
+        other = "In-house" if usual == "Job work" else "Job work"
+        days = route_days(r, usual, use_learned) or route_days(r, other, use_learned)
+        if stage and days:
+            out[stage] = days
+    return out
+
+
+def duplicate_stages(rows):
+    """Stage names that appear more than once (case and spaces ignored)."""
+    seen, dups = set(), []
+    for r in rows:
+        key = str(r.get("stage") or "").strip().lower()
+        if key and key in seen and key not in dups:
+            dups.append(key)
+        seen.add(key)
+    return [next(str(r.get("stage")).strip() for r in rows if str(r.get("stage") or "").strip().lower() == k) for k in dups]
 
 
 def median(values):

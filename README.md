@@ -332,3 +332,12 @@ Item Lead Days, one item from one supplier). Each page saves only its own table.
 
 Patch `add_supplier_lead_days` adds the fields and starting values (all sources on, latest
 Purchase Order, Block, 0 grace days). Nothing changes until lead days are entered.
+
+## Lead days per stage, by route
+
+Each stage row has In-house days (`override_days`) and Job work days (`jobwork_override_days`),
+each with its learned median as a guide. The re-order report uses the stage's usual route's days
+(else the other route's, else — with learned days on — the medians: `reorder_math.stage_days_used`);
+the Plan tab shows the days of the route chosen on each level (`stage_route_days`). A stage may
+appear only once (`ReorderSettings.validate`). Patch `split_stage_days_by_route` moves a Job-work
+stage's old Days used to Job work days and merges stages entered twice.

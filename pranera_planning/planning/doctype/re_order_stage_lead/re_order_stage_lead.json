@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-30 18:00:00.000000",
- "modified": "2026-10-01 10:00:00.000000",
+ "modified": "2026-10-05 16:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -60,10 +60,10 @@
   },
   {
    "fieldname": "override_days",
-   "label": "Days used",
+   "label": "In-house days",
    "fieldtype": "Float",
    "in_list_view": 1,
-   "description": "The lead days re-order levels use for this stage. Empty: none, and the report flags the items, unless Re-order Settings › Use learned days where Days used is empty is ticked."
+   "description": "Days from Work Order to finished output in your own factory. Used when the stage's usual route is In-house, and on plans where a level is made in-house."
   },
   {
    "fieldname": "job_work_services",
@@ -71,6 +71,13 @@
    "label": "Job-work services",
    "in_list_view": 1,
    "description": "Service items bought when this stage is job work, comma-separated (e.g. DYEING, or DRYER, STENTER). Filled nightly from your Purchase Material Requests where empty."
+  },
+  {
+   "fieldname": "jobwork_override_days",
+   "label": "Job work days",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "description": "Days from sending to a job worker to receiving the output back. Used when the stage's usual route is Job work, and on plans where a level goes to job work."
   }
  ],
  "field_order": [
@@ -81,6 +88,7 @@
   "jobwork_days",
   "jobwork_orders",
   "override_days",
+  "jobwork_override_days",
   "job_work_services"
  ]
 }

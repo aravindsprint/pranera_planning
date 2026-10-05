@@ -349,6 +349,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         stage = stage_of(code, it.get("item_group")) if r["made"] else ""
         srow = stage_rows.get(stage.lower()) if stage else None
         route = (routes.get(code) or (srow.route if srow and srow.route else "In-house")) if r["made"] else ""
+        days_route = (cfg.get("stage_route_days") or {}).get(stage.lower(), {}).get(route) if r["made"] and stage else None
         options = [x.strip() for x in ((srow.get("job_work_services") if srow else "") or "").split(",") if x.strip()]
         if previous.get(code) and previous[code] not in options:
             options = [previous[code]] + options
@@ -378,7 +379,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
 
         levels.append({**{k: r[k] for k in ("item", "need", "own", "coming", "reserve", "short", "request", "made", "depth")},
                        "how": [t for _q, t in r["how"]], "item_name": it.get("item_name"), "uom": it.get("stock_uom"),
-                       "stage": stage or ("Bought" if not r["made"] else ""), "route": route,
+                       "stage": stage or ("Bought" if not r["made"] else ""), "route": route, "stage_days": days_route,
                        "service": service if r["made"] else None, "service_options": options if r["made"] else [],
                        "bom": boms.get(code) if r["made"] else None, "bom_options": bom_options.get(code, []) if r["made"] else [],
                        "process_loss": loss_of.get(boms.get(code), 0.0) if r["made"] else 0.0,

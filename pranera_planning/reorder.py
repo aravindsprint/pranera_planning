@@ -37,6 +37,7 @@ from frappe import _
 from frappe.utils import add_days, add_months, flt, getdate, now_datetime, today
 
 from pranera_planning.lead_math import later_note, split_on_order
+from pranera_planning.reorder_math import stage_route_days
 from pranera_planning.reorder_math import (
     cumulative_lead, deepest, main_input, median, normalise_family, reorder_numbers, stage_days_used,
 )
@@ -69,7 +70,8 @@ def load_settings():
     bounds = {g.name: (g.lft, g.rgt) for g in frappe.get_all(
         "Item Group", filters={"name": ["in", list(groups)]}, fields=["name", "lft", "rgt"])} if groups else {}
     rules = [(*bounds[r.item_group], r) for r in s.group_rules if r.item_group in bounds]
-    stage_days = stage_days_used([r.as_dict() for r in s.stage_leads], bool(s.get("use_learned_lead_days")))
+    stage_rows = [r.as_dict() for r in s.stage_leads]
+    stage_days = stage_days_used(stage_rows, bool(s.get("use_learned_lead_days")))
     return {
         "doc": s,
         "history_days": int(s.history_days or 90),
@@ -79,6 +81,7 @@ def load_settings():
         "round_to": flt(s.default_round_to) or 1.0,
         "rules": rules,
         "stage_days": stage_days,
+        "stage_route_days": stage_route_days(stage_rows, bool(s.get("use_learned_lead_days"))),
         "include_bought": bool(s.get("include_bought_lead_days")),
         "lead": lead_config(s),
     }

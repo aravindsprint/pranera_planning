@@ -20,7 +20,7 @@ SCALARS = {
 TABLES = {
     "group_rules": ["item_group", "demand_basis", "safety_days", "cover_days", "round_to", "bought_lead_days"],
     # learned figures are filled nightly: kept from the saved rows, never taken from the page
-    "stage_leads": ["stage", "route", "override_days", "job_work_services"],
+    "stage_leads": ["stage", "route", "override_days", "jobwork_override_days", "job_work_services"],
     "seasons": ["season", "start_month"],
     "lead_sources": ["source", "enabled"],
 }

@@ -138,3 +138,35 @@ class TestStockProjectSequence(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from pranera_planning.reorder_math import duplicate_stages, route_days, stage_route_days  # noqa: E402
+
+
+class TestDaysPerRoute(unittest.TestCase):
+    """Each stage has In-house days (override_days) and Job work days (jobwork_override_days)."""
+    ROWS = [
+        {"stage": "Knitting", "route": "In-house", "override_days": 5, "jobwork_override_days": 10},
+        {"stage": "Dyeing", "route": "Job work", "override_days": 7, "jobwork_override_days": 12},
+        {"stage": "Finishing", "route": "Job work", "override_days": 3, "jobwork_override_days": None},
+        {"stage": "Compacting", "route": "In-house", "jobwork_days": 4.2},
+    ]
+
+    def test_report_uses_the_usual_routes_days(self):
+        self.assertEqual(stage_days_used(self.ROWS), {"knitting": 5, "dyeing": 12, "finishing": 3})
+
+    def test_learned_only_fills_a_route_without_days(self):
+        self.assertEqual(stage_days_used(self.ROWS, use_learned=True)["compacting"], 5)
+
+    def test_plan_gets_both_routes(self):
+        days = stage_route_days(self.ROWS)
+        self.assertEqual(days["knitting"], {"In-house": 5, "Job work": 10})
+        self.assertEqual(days["finishing"], {"In-house": 3, "Job work": None})
+
+    def test_route_days_rounds_up(self):
+        self.assertEqual(route_days({"jobwork_override_days": 9.2}, "Job work"), 10)
+
+    def test_duplicate_stage_names(self):
+        rows = self.ROWS + [{"stage": " knitting "}]
+        self.assertEqual(duplicate_stages(rows), ["Knitting"])
+        self.assertEqual(duplicate_stages(self.ROWS), [])

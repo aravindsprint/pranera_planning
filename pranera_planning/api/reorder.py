@@ -61,8 +61,7 @@ def get_reorder_report(status=None, item_group=None, obtained=None, search=None,
             "near_margin": s.near_margin if s.near_margin is not None else 10,
             "last_run": s.last_run,
             "last_run_items": s.last_run_items,
-            "stages_without_days": [r.stage for r in s.stage_leads if r.stage and not flt(r.override_days)
-                                    and not (s.get("use_learned_lead_days") and (r.inhouse_days or r.jobwork_days))],
+            "stages_without_days": _stages_without_days(s),
         },
     }
 
@@ -79,3 +78,10 @@ def recalculate_items(items):
     from pranera_planning.reorder import calculate, load_settings
     count = calculate(items, load_settings())
     return count
+
+
+def _stages_without_days(s):
+    """Stages with no lead days for any route (their items get none)."""
+    from pranera_planning.reorder_math import stage_days_used
+    have = stage_days_used(list(s.stage_leads or []), bool(s.get("use_learned_lead_days")))
+    return [r.stage for r in s.stage_leads if r.stage and r.stage.strip().lower() not in have]

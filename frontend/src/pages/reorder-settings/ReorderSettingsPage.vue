@@ -18,7 +18,7 @@
             <a class="btn btn-outline" :href="deskUrl('/app/re-order-settings')" target="_blank">Open in desk</a>
             <a class="btn btn-outline" :href="`${APP_BASE}/reorder-report`">Open report</a>
             <button class="btn btn-outline" :disabled="busy" @click="recalculate">Recalculate now</button>
-            <button class="btn btn-primary" :disabled="busy || !s.can_write || !dirty" @click="save">{{ busy ? 'Saving…' : 'Save' }}</button>
+            <button class="btn btn-primary" :disabled="busy || !s.can_write || !dirty || dupStages.length > 0" @click="save">{{ busy ? 'Saving…' : 'Save' }}</button>
           </div>
         </div>
 
@@ -67,33 +67,48 @@
         <!-- Lead days -->
         <section class="card">
           <div class="card__head"><h2 class="h2">Lead days per stage</h2></div>
-          <p class="hint">Days used drives the re-order levels. The learned medians beside it are a guide, refreshed nightly: Work Order
-            creation to its last Manufacture entry (in-house), Subcontracting Order date to its last Subcontracting Receipt (job work).</p>
+          <p class="hint">Each stage has days for each route: in-house (your own Work Order) and job work (sent to a job worker and back).
+            The re-order levels use the stage's usual route; a plan uses the route chosen on each level. The learned medians under each box
+            are a guide, refreshed nightly: Work Order creation to its last Manufacture entry (in-house), Subcontracting Order date to its last
+            Subcontracting Receipt (job work).</p>
           <div class="grid">
             <div class="field"><label class="form-label" for="rs-months">Learn from the last (months)</label>
               <input id="rs-months" v-model.number="s.lead_history_months" type="number" min="1" class="form-input" :disabled="!s.can_write" /></div>
             <label class="check"><input v-model="s.use_learned_lead_days" type="checkbox" :true-value="1" :false-value="0" :disabled="!s.can_write" />
-              <span><b>Use learned days where Days used is empty</b><br /><span class="hint">Learned medians include waiting time — check them first.</span></span></label>
+              <span><b>Use learned days where a route's days are empty</b><br /><span class="hint">Learned medians include waiting time — check them first.</span></span></label>
             <label class="check"><input v-model="s.include_bought_lead_days" type="checkbox" :true-value="1" :false-value="0" :disabled="!s.can_write" />
               <span><b>Include bought materials' lead days</b><br /><span class="hint">Off: finished fabric = 3 + 7 + 5 = 15 days; on: + the yarn supplier's days.</span></span></label>
           </div>
           <table class="data-table">
-            <thead><tr><th>Stage</th><th>Usual route</th><th class="num">In-house (learned)</th><th class="num">Job work (learned)</th><th class="num">Days used</th><th>Job-work services</th><th></th></tr></thead>
+            <thead><tr><th>Stage</th><th>Usual route</th><th class="num">In-house days</th><th class="num">Job work days</th><th>Job-work services</th><th></th></tr></thead>
             <tbody>
-              <tr v-for="(r, i) in s.stage_leads" :key="`s${i}`">
-                <td><input v-model.trim="r.stage" class="form-input" placeholder="e.g. Knitting" :disabled="!s.can_write" /></td>
-                <td><select v-model="r.route" class="form-input" :disabled="!s.can_write">
+              <tr v-for="(r, i) in s.stage_leads" :key="`s${i}`" :class="{ dup: dupStages.includes(norm(r.stage)) }">
+                <td><input v-model.trim="r.stage" class="form-input" placeholder="e.g. Knitting" :aria-label="`Stage ${i + 1}`" :disabled="!s.can_write" /></td>
+                <td><select v-model="r.route" class="form-input" :aria-label="`Usual route for ${r.stage || 'stage'}`" :disabled="!s.can_write">
                   <option value="In-house">In-house</option><option value="Job work">Job work</option></select></td>
-                <td class="num">{{ learned(r.inhouse_days, r.inhouse_orders, 'Work Orders') }}</td>
-                <td class="num">{{ learned(r.jobwork_days, r.jobwork_orders, 'SC Orders') }}</td>
-                <td class="num"><input v-model.number="r.override_days" type="number" min="0" step="any" class="form-input n"
-                                       :class="{ missing: !r.override_days }" :disabled="!s.can_write" /></td>
-                <td class="wide"><input v-model.trim="r.job_work_services" class="form-input" placeholder="e.g. STENTER, DRYER" :disabled="!s.can_write" /></td>
+                <td class="num">
+                  <input v-model.number="r.override_days" type="number" min="0" step="any" class="form-input n"
+                         :class="{ missing: r.route !== 'Job work' && !r.override_days, usual: r.route !== 'Job work' }"
+                         :aria-label="`In-house days for ${r.stage || 'stage'}`" :disabled="!s.can_write" />
+                  <div class="learn">learned {{ learned(r.inhouse_days, r.inhouse_orders, 'WO') }}</div>
+                </td>
+                <td class="num">
+                  <input v-model.number="r.jobwork_override_days" type="number" min="0" step="any" class="form-input n"
+                         :class="{ missing: r.route === 'Job work' && !r.jobwork_override_days, usual: r.route === 'Job work' }"
+                         :aria-label="`Job work days for ${r.stage || 'stage'}`" :disabled="!s.can_write" />
+                  <div class="learn">learned {{ learned(r.jobwork_days, r.jobwork_orders, 'SC') }}</div>
+                </td>
+                <td class="wide"><input v-model.trim="r.job_work_services" class="form-input" placeholder="e.g. STENTER, DRYER"
+                                        :aria-label="`Job-work services for ${r.stage || 'stage'}`" :disabled="!s.can_write" /></td>
                 <td class="act"><button v-if="s.can_write" class="icon-btn" :aria-label="`Remove stage ${i + 1}`" @click="s.stage_leads.splice(i, 1)"><i class="pi pi-times"></i></button></td>
               </tr>
             </tbody>
           </table>
-          <p v-if="s.stage_leads.some((r) => !r.override_days)" class="warn-line">Stages with no Days used give their items no lead time — set them.</p>
+          <p class="hint">The box with the dark border is the usual route's: the re-order levels use it. Fill in the other route too if the stage
+            sometimes goes that way. A stage with only one route filled uses that one for both.</p>
+          <p v-if="dupStages.length" class="warn-line">Each stage can appear only once: {{ dupStages.join(', ') }}. Put its in-house and job-work days in one row.</p>
+          <p v-if="s.stage_leads.some((r) => r.stage && !r.override_days && !r.jobwork_override_days)" class="warn-line">Stages with no days for either route give their items no lead time — set them.</p>
+          <p v-if="s.stage_leads.some((r) => r.route === 'Job work' && !(r.job_work_services || '').trim())" class="warn-line">A stage that goes to job work needs its Job-work services, or its plans can't buy the work.</p>
           <button v-if="s.can_write" class="btn btn-outline add" @click="s.stage_leads.push({ stage: '', route: 'In-house' })">+ Add stage</button>
         </section>
 
@@ -293,6 +308,16 @@ let original = ''
 
 const when = (t) => (t ? new Date(String(t).replace(' ', 'T')).toLocaleString() : '—')
 const learned = (days, orders, what) => (days ? `${Number(days).toLocaleString(undefined, { maximumFractionDigits: 1 })} (${orders || 0} ${what})` : '—')
+const norm = (x) => (x || '').trim().toLowerCase()
+const dupStages = computed(() => {
+  const seen = new Set(); const out = []
+  for (const r of s.value?.stage_leads || []) {
+    const k = norm(r.stage)
+    if (k && seen.has(k) && !out.includes(k)) out.push(k)
+    seen.add(k)
+  }
+  return out
+})
 const hasSeq = computed(() => (s.value?.stock_project_pattern || '').includes('{SEQ}'))
 
 // Mirrors reorder_math.period_of / stock_project_name, for the preview only.
@@ -423,6 +448,9 @@ td.wide { min-width: 240px; }
 .rank__move { display: flex; gap: 2px; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .try { margin-top: 16px; }
+.learn { font-size: 11px; color: var(--slate-500); margin-top: 3px; white-space: nowrap; }
+.form-input.usual { border-color: var(--slate-700); }
+tr.dup td { background: #fff7ed; }
 .gap-top { margin-top: 12px; }
 .lead-link__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .lead-link { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;

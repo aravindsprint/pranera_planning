@@ -172,6 +172,7 @@
                         · {{ fmt(r.request) }} <span v-if="r.service_from">({{ r.service_from }})</span>
                       </div>
                       <div v-else class="sub">Manufacture request · {{ fmt(r.request) }} {{ r.uom }}</div>
+                      <div v-if="r.request" class="sub">{{ r.stage_days ? `${r.stage_days} days ${r.route === 'Job work' ? 'at the job worker' : 'in-house'}` : `no ${r.route === 'Job work' ? 'job-work' : 'in-house'} days set for ${r.stage}` }}</div>
                     </template>
                     <template v-else>
                       <div class="sub">{{ r.request ? `Purchase request · ${fmt(r.request)} ${r.uom}` : 'nothing to buy' }}</div>

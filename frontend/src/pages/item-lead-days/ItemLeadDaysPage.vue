@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <AppHeader subtitle="Items whose lead days differ from their supplier's usual days" />
+    <AppHeader subtitle="Lead days of one item from one supplier" />
 
     <main class="page-content">
       <div v-if="error" class="alert alert-error" role="alert">{{ error }}</div>
@@ -25,9 +25,12 @@
         <section class="card">
           <div class="card__head">
             <h2 class="h2">One item from one supplier</h2>
-            <span class="sub">{{ plural(filled(d.item_supplier_leads, 'item_code', 'lead_days'), 'exception') }}</span>
+            <span class="sub">{{ plural(filled(d.item_supplier_leads, 'item_code', 'lead_days'), 'row') }}</span>
           </div>
-          <p class="hint">Only where an item differs from its supplier's usual days, e.g. melange 45. Stored on the Item's Supplier Items row as <i>Lead days</i>.</p>
+          <p class="hint">For an item bought from several suppliers (the same yarn from China in 45 days or from India in 15), or one that
+            takes longer than its supplier's usual days (melange 45). An item with no Default Supplier plans with the slowest of its rows
+            here, or the fastest, as <a :href="`${APP_BASE}/reorder-settings`">Re-order Settings</a> says; a Purchase Order uses the
+            row for its own supplier. Stored on the Item's Supplier Items row as <i>Lead days</i>.</p>
           <table class="data-table">
             <thead><tr><th>Item</th><th>Supplier</th><th class="num">Lead days</th><th></th></tr></thead>
             <tbody>

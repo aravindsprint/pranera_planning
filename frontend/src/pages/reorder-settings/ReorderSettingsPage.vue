@@ -122,12 +122,20 @@
             </div>
 
             <div>
+              <p class="hint">An item with a Default Supplier (Item › Item Defaults) always uses it. For an item without one:</p>
               <div class="field">
-                <label class="form-label" for="rs-nodef">When an item has no default supplier</label>
+                <label class="form-label" for="rs-rows">When it has Item Lead Days rows</label>
+                <select id="rs-rows" v-model="s.item_rows_pick" class="form-input" :disabled="!s.can_write">
+                  <option v-for="o in ROW_PICKS" :key="o" :value="o">{{ o }}</option>
+                </select>
+                <span class="hint">{{ ROW_HINT[s.item_rows_pick] }}</span>
+              </div>
+              <div class="field gap-top">
+                <label class="form-label" for="rs-nodef">Otherwise</label>
                 <select id="rs-nodef" v-model="s.no_default_supplier" class="form-input" :disabled="!s.can_write">
                   <option v-for="o in FALLBACKS" :key="o" :value="o">{{ o }}</option>
                 </select>
-                <span class="hint">{{ FALLBACK_HINT[s.no_default_supplier] }} The default supplier is set on the Item, under Item Defaults.</span>
+                <span class="hint">{{ FALLBACK_HINT[s.no_default_supplier] }}</span>
               </div>
 
               <div class="try">
@@ -143,7 +151,7 @@
                   <div class="sub">
                     <template v-if="tryResult.supplier">Supplier {{ tryResult.supplier }}
                       ({{ tryResult.supplier_from === 'default' ? 'default supplier' : tryResult.supplier_from }})</template>
-                    <template v-else>No supplier found: the item has no Default Supplier{{ noSupplierWhy(tryResult) }}.
+                    <template v-else>No supplier found: the item has no Default Supplier, no Item Lead Days rows{{ noSupplierWhy(tryResult) }}.
                       Only the item and group sources can apply.</template>
                   </div>
                   <table class="data-table compact">
@@ -163,7 +171,7 @@
 
           <div class="lead-link">
             <span v-if="s.supplier_lead_counts?.ready">
-              Lead days are set for {{ plural(s.supplier_lead_counts.suppliers, 'supplier') }} and {{ plural(s.supplier_lead_counts.items, 'item exception') }}.
+              Lead days are set for {{ plural(s.supplier_lead_counts.suppliers, 'supplier') }} and {{ plural(s.supplier_lead_counts.items, 'item row') }}.
             </span>
             <span v-else class="warn-line">The supplier lead day fields aren't installed yet: run bench migrate.</span>
             <span class="lead-link__actions">
@@ -249,6 +257,12 @@ const SOURCE_HINT = {
   "Item's Lead Time Days": 'The Item\'s own number, whoever supplies it.',
   'Item-group rule': 'Lead days when bought, in Per item group above.',
 }
+const ROW_PICKS = ['Slowest', 'Fastest', "Don't use"]
+const ROW_HINT = {
+  Slowest: 'Plan with the slowest of its suppliers on Item Lead Days (e.g. 45 rather than 15): safer, more stock.',
+  Fastest: 'Plan with the fastest of its suppliers on Item Lead Days: leaner stock, more risk.',
+  "Don't use": 'Ignore the rows here and go straight to the setting below.',
+}
 const FALLBACKS = ['Latest Purchase Order', 'Most bought from', 'No supplier']
 const FALLBACK_HINT = {
   'Latest Purchase Order': 'The supplier of the item\'s most recent submitted Purchase Order.',
@@ -333,7 +347,7 @@ async function save() {
 function noSupplierWhy(r) {
   if (r.fallback === 'No supplier') return ', and items without one use no supplier (setting above)'
   if (r.fallback === 'Most bought from') return `, and no submitted Purchase Order in the last ${r.months} months`
-  return ' and no submitted Purchase Order'
+  return ', and no submitted Purchase Order'
 }
 function move(i, d) {
   const list = s.value.lead_sources
@@ -347,6 +361,7 @@ async function runTry() {
     tryResult.value = await callMessage('pranera_planning.api.reorder_settings.explain_lead', {
       item: tryItem.value, supplier: trySupplier.value || undefined,
       sources: s.value.lead_sources, no_default_supplier: s.value.no_default_supplier,
+      item_rows_pick: s.value.item_rows_pick,
     })
   } catch (e) {
     tryError.value = e.message
@@ -408,6 +423,7 @@ td.wide { min-width: 240px; }
 .rank__move { display: flex; gap: 2px; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .try { margin-top: 16px; }
+.gap-top { margin-top: 12px; }
 .lead-link__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .lead-link { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 12px 14px; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 8px; font-size: 13px; }

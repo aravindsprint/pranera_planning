@@ -11,7 +11,8 @@ from pranera_planning.tests.test_stock_entry_checks import WORLD, ValidationErro
 
 INFO = {"30S COTTON": _dict(item_group="YARN", lead_time_days=20),
         "MELANGE": _dict(item_group="YARN", lead_time_days=0),
-        "NEW YARN": _dict(item_group="YARN", lead_time_days=0)}
+        "NEW YARN": _dict(item_group="YARN", lead_time_days=0),
+        "YRFPP090/GREIGE": _dict(item_group="YARN", lead_time_days=0)}
 
 
 def group_days(group):
@@ -25,7 +26,10 @@ class _World:
                                              _dict(parent="MELANGE", default_supplier="SRI MILLS", company="PSS")]
         WORLD["Supplier"] = lambda flt: [_dict(name=n, usual_lead_days=d) for n, d in
                                          (("ZHEJIANG", 45), ("SRI MILLS", 15)) if n in flt["name"][1]]
-        WORLD["Item Supplier"] = lambda flt: [_dict(parent="MELANGE", supplier="SRI MILLS", lead_days=45)]
+        WORLD["Item Supplier"] = lambda flt: [_dict(parent="MELANGE", supplier="SRI MILLS", lead_days=45),
+                                              _dict(parent="YRFPP090/GREIGE", supplier="HANGZHOU", lead_days=45),
+                                              _dict(parent="YRFPP090/GREIGE", supplier="OMEGA", lead_days=15),
+                                              _dict(parent="YRFPP090/GREIGE", supplier="TEXKNIT", lead_days=15)]
         fake["frappe"].db.sql = lambda q, v=None, **k: [(i, s) for i, s in (latest_po or {}).items() if i in v["items"]] \
             if "ORDER BY po.transaction_date DESC" in q else []
 
@@ -48,9 +52,9 @@ class TestResolve(unittest.TestCase):
             sys.modules.pop(n, None) if m is None else sys.modules.__setitem__(n, m)
         WORLD.clear()
 
-    def resolve(self, order=None, supplier=None, fallback="Latest Purchase Order", latest_po=None):
+    def resolve(self, order=None, supplier=None, fallback="Latest Purchase Order", latest_po=None, item_rows="Slowest"):
         _World.setup(self.fake, latest_po)
-        cfg = {**self.T.default_config(), "fallback": fallback}
+        cfg = {**self.T.default_config(), "fallback": fallback, "item_rows": item_rows}
         if order is not None:
             cfg["order"] = order
         return self.T.resolve(list(INFO), INFO, group_days, cfg, supplier=supplier)
@@ -74,6 +78,20 @@ class TestResolve(unittest.TestCase):
     def test_no_supplier_setting_falls_to_item_then_group(self):
         r = self.resolve(fallback="No supplier", latest_po={"NEW YARN": "ZHEJIANG"})
         self.assertEqual((r["NEW YARN"]["days"], r["NEW YARN"]["source"], r["NEW YARN"]["supplier"]), (12.0, "group", None))
+
+    def test_item_lead_days_rows_before_the_latest_purchase_order(self):
+        r = self.resolve(latest_po={"YRFPP090/GREIGE": "RELIANCE"})["YRFPP090/GREIGE"]
+        self.assertEqual((r["days"], r["supplier"], r["supplier_from"]), (45.0, "HANGZHOU", "slowest on Item Lead Days"))
+
+    def test_fastest_row_ties_go_by_name(self):
+        r = self.resolve(item_rows="Fastest")["YRFPP090/GREIGE"]
+        self.assertEqual((r["days"], r["supplier"]), (15.0, "OMEGA"))
+
+    def test_rows_not_used_falls_to_the_setting(self):
+        r = self.resolve(item_rows="Don't use", latest_po={"YRFPP090/GREIGE": "ZHEJIANG"})["YRFPP090/GREIGE"]
+        self.assertEqual((r["days"], r["supplier"]), (45.0, "ZHEJIANG"))
+        r = self.resolve(item_rows="Don't use", fallback="No supplier")["YRFPP090/GREIGE"]
+        self.assertEqual((r["days"], r["source"]), (12.0, "group"))
 
     def test_ranking_from_the_settings(self):
         r = self.resolve(order=["item", "group"])

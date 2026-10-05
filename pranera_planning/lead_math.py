@@ -29,6 +29,23 @@ KEY_OF = {v: k for k, v in LABELS.items()}
 LATEST_PO, MOST_BOUGHT, NO_SUPPLIER = "Latest Purchase Order", "Most bought from", "No supplier"
 FALLBACKS = [LATEST_PO, MOST_BOUGHT, NO_SUPPLIER]
 
+# Before that fallback, an item with no Default Supplier but with Item Lead Days rows (its
+# Supplier Items rows with lead days) uses one of those suppliers
+# (Re-order Settings › item_rows_pick)
+SLOWEST, FASTEST, DONT_USE = "Slowest", "Fastest", "Don't use"
+ITEM_ROW_PICKS = [SLOWEST, FASTEST, DONT_USE]
+
+
+def pick_row_supplier(rows, how):
+    """The supplier to plan with from an item's [(supplier, lead days)]: the slowest (safe:
+    more stock) or the fastest (lean). Ties go to the supplier name first in order. None when
+    there are no rows or how is Don't use."""
+    rows = [(s, float(d)) for s, d in rows if s and float(d or 0) > 0]
+    if not rows or how not in (SLOWEST, FASTEST):
+        return None
+    sign = -1 if how == SLOWEST else 1
+    return sorted(rows, key=lambda r: (sign * r[1], r[0]))[0][0]
+
 
 def source_order(rows):
     """The enabled source keys in rank order, from the settings rows [{"source", "enabled"}]

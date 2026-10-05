@@ -310,8 +310,9 @@ A bought item's lead days come from a ranked list in Re-order Settings › Suppl
 each source can be switched off, and the first one switched on with a number wins:
 the item's Supplier Items row (`Item Supplier.lead_days`), the supplier's usual lead days
 (`Supplier.usual_lead_days`), the Item's Lead Time Days, the item-group rule. The supplier is
-the Purchase Order's own; otherwise the item's Default Supplier, else — as set — the supplier of
-its latest Purchase Order, the one it was bought from most, or none (`lead_time.py`; the ranking
+the Purchase Order's own; otherwise the item's Default Supplier; else, when the item has Item
+Lead Days rows, the slowest (or fastest, or neither: `item_rows_pick`) of those suppliers; else —
+as set — the supplier of its latest Purchase Order, the one it was bought from most, or none (`lead_time.py`; the ranking
 and date arithmetic are in `lead_math.py`). The settings page has a Try an item box showing
 every source's value and which wins. The numbers themselves are edited on two pages that write
 the fields directly (`api.supplier_lead_days`): `/planning-app/supplier-lead-days` (Planning ›

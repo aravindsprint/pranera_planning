@@ -15,7 +15,7 @@ SCALARS = {
     "history_days": cint, "near_margin": flt, "default_safety_days": flt, "default_cover_days": flt,
     "default_round_to": flt, "lead_history_months": cint, "use_learned_lead_days": cint,
     "include_bought_lead_days": cint, "default_warehouse": str, "stock_project_period": str,
-    "stock_project_pattern": str, "no_default_supplier": str, "lead_time_check": str, "lead_time_grace_days": cint,
+    "stock_project_pattern": str, "no_default_supplier": str, "item_rows_pick": str, "lead_time_check": str, "lead_time_grace_days": cint,
 }
 TABLES = {
     "group_rules": ["item_group", "demand_basis", "safety_days", "cover_days", "round_to", "bought_lead_days"],
@@ -31,6 +31,7 @@ LEARNED = ["inhouse_days", "inhouse_orders", "jobwork_days", "jobwork_orders"]
 def _out(doc):
     return {
         **{k: doc.get(k) for k in SCALARS},
+        "item_rows_pick": doc.get("item_rows_pick") or "Slowest",
         "group_rules": [{f: r.get(f) for f in TABLES["group_rules"]} for r in doc.group_rules],
         "stage_leads": [{f: r.get(f) for f in TABLES["stage_leads"] + LEARNED} for r in doc.stage_leads],
         "seasons": [{f: r.get(f) for f in TABLES["seasons"]} for r in doc.seasons],
@@ -100,7 +101,7 @@ def _lead_sources(doc):
 
 
 @frappe.whitelist()
-def explain_lead(item, supplier=None, sources=None, no_default_supplier=None):
+def explain_lead(item, supplier=None, sources=None, no_default_supplier=None, item_rows_pick=None):
     """The settings page's Try an item box: every source's value for `item`, and which wins
     with the page's (maybe unsaved) ranking. Lead days themselves are read as saved."""
     frappe.has_permission(DOCTYPE, "read", throw=True)
@@ -109,6 +110,7 @@ def explain_lead(item, supplier=None, sources=None, no_default_supplier=None):
     blank = (None, "", "null", "undefined")
     supplier = None if supplier in blank else supplier
     no_default_supplier = None if no_default_supplier in blank else no_default_supplier
+    item_rows_pick = None if item_rows_pick in blank else item_rows_pick
     rows = json.loads(sources) if isinstance(sources, str) else (sources or [])
     cfg = load_settings()
     lead_cfg = dict(cfg["lead"])
@@ -116,6 +118,8 @@ def explain_lead(item, supplier=None, sources=None, no_default_supplier=None):
         lead_cfg["order"] = source_order(rows)
     if no_default_supplier:
         lead_cfg["fallback"] = no_default_supplier
+    if item_rows_pick:
+        lead_cfg["item_rows"] = item_rows_pick
     it = frappe.db.get_value("Item", item, ["name", "item_group", "lead_time_days"], as_dict=True)
     if not it:
         frappe.throw(_("Item {0} not found.").format(item))
@@ -126,7 +130,7 @@ def explain_lead(item, supplier=None, sources=None, no_default_supplier=None):
         "item": item, "days": res["days"], "winner": res["source"] and LABELS[res["source"]],
         "supplier": res["supplier"], "text": res["text"],
         "supplier_from": "chosen above" if supplier else res["supplier_from"],
-        "fallback": lead_cfg["fallback"], "months": lead_cfg["months"],
+        "fallback": lead_cfg["fallback"], "months": lead_cfg["months"], "item_rows": lead_cfg.get("item_rows"),
         "sources": [{"source": r["source"], "enabled": cint(r.get("enabled")),
                      "value": res["values"].get(KEY_OF.get(r["source"]))} for r in ranked if r.get("source") in LABEL_KEYS],
     }

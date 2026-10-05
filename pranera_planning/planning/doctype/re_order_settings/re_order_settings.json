@@ -200,7 +200,7 @@
   },
   {
    "fieldname": "no_default_supplier",
-   "label": "When an item has no default supplier",
+   "label": "Otherwise, when an item has no default supplier",
    "fieldtype": "Select",
    "options": "Latest Purchase Order\nMost bought from\nNo supplier",
    "default": "Latest Purchase Order",
@@ -220,6 +220,14 @@
    "fieldtype": "Int",
    "default": "0",
    "description": "A line this many days short still passes."
+  },
+  {
+   "fieldname": "item_rows_pick",
+   "label": "When it has Item Lead Days rows",
+   "fieldtype": "Select",
+   "options": "Slowest\nFastest\nDon't use",
+   "default": "Slowest",
+   "description": "For an item with no Default Supplier: plan with the slowest (safe, more stock) or the fastest (lean) supplier among its Item Lead Days rows. Items without rows use the setting below."
   }
  ],
  "field_order": [
@@ -240,6 +248,7 @@
   "supplier_lead_section",
   "lead_sources",
   "column_break_l",
+  "item_rows_pick",
   "no_default_supplier",
   "lead_time_check",
   "lead_time_grace_days",

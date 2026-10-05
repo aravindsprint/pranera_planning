@@ -8,7 +8,8 @@ Where the numbers live (custom fields, patches/add_supplier_lead_days.py):
     Re-order Group Rule.bought_lead_days
 
 Which supplier an item is bought from: the Purchase Order's supplier when there is one;
-otherwise the item's Default Supplier (Item Defaults), else — as Re-order Settings says — the
+otherwise the item's Default Supplier (Item Defaults); else, when the item has Item Lead Days
+rows, the slowest (or fastest) of those suppliers; else — as Re-order Settings says — the
 supplier of its latest Purchase Order, the one it was bought from most, or none.
 """
 from collections import defaultdict
@@ -17,7 +18,8 @@ import frappe
 from frappe.utils import add_months, flt, today
 
 from pranera_planning.lead_math import (
-    GROUP, ITEM, LATEST_PO, MOST_BOUGHT, NO_SUPPLIER, SUPPLIER, SUPPLIER_ITEM, describe, pick_lead, source_order,
+    FASTEST, GROUP, ITEM, ITEM_ROW_PICKS, LATEST_PO, MOST_BOUGHT, NO_SUPPLIER, SLOWEST, SUPPLIER, SUPPLIER_ITEM, describe,
+    pick_lead, pick_row_supplier, source_order,
 )
 
 CHUNK = 500
@@ -41,7 +43,9 @@ def load_config(s):
     if s is None:
         return default_config()
     check = (s.get("lead_time_check") or "Block")
+    rows_pick = s.get("item_rows_pick") or SLOWEST
     return {
+        "item_rows": rows_pick if rows_pick in ITEM_ROW_PICKS else SLOWEST,
         "order": source_order(s.get("lead_sources") or []),
         "fallback": s.get("no_default_supplier") or LATEST_PO,
         "months": int(s.get("lead_history_months") or 6),
@@ -51,7 +55,7 @@ def load_config(s):
 
 
 def default_config():
-    return {"order": source_order([]), "fallback": LATEST_PO, "months": 6, "check": "Block", "grace": 0.0}
+    return {"order": source_order([]), "item_rows": SLOWEST, "fallback": LATEST_PO, "months": 6, "check": "Block", "grace": 0.0}
 
 
 def _company():
@@ -120,6 +124,14 @@ def supplier_days(suppliers):
         "Supplier", filters={"name": ["in", suppliers]}, fields=["name", "usual_lead_days"]) if flt(r.usual_lead_days) > 0}
 
 
+def item_rows(items):
+    """{item: [(supplier, lead days)]} — the items' Supplier Items rows that have lead days."""
+    out = defaultdict(list)
+    for (item, supplier), days in supplier_item_days(items).items():
+        out[item].append((supplier, days))
+    return out
+
+
 def supplier_item_days(items):
     """{(item, supplier): lead days} from the items' Supplier Items rows."""
     items = [i for i in items if i]
@@ -150,6 +162,15 @@ def resolve(items, info, group_days, lead_cfg=None, supplier=None, all_sources=F
             sup_of = default_suppliers(items)
             sup_from = {i: "default" for i in sup_of}
             missing = [i for i in items if i not in sup_of]
+            if missing and cfg.get("item_rows", SLOWEST) in (SLOWEST, FASTEST):
+                rows = item_rows(missing)
+                how = cfg.get("item_rows", SLOWEST)
+                for code in missing:
+                    sup = pick_row_supplier(rows.get(code, []), how)
+                    if sup:
+                        sup_of[code] = sup
+                        sup_from[code] = f"{how.lower()} on Item Lead Days"
+                missing = [i for i in missing if i not in sup_of]
             if missing:
                 more, text = fallback_suppliers(missing, cfg["fallback"], cfg["months"])
                 sup_of.update(more)

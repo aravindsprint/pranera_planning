@@ -2,7 +2,9 @@
 (Supplier.usual_lead_days) and the exceptions for one item from one supplier (the Item's
 Supplier Items rows, Item Supplier.lead_days). The page edits those fields directly, so desk
 and app always show the same numbers. Which of them counts, and in what order, is set in
-Re-order Settings (lead_time.py)."""
+Re-order Settings (lead_time.py). The Item Lead Days page also sets each item's Default
+Supplier (Item › Item Defaults, for the user's company): the supplier the re-order report
+plans with."""
 import json
 
 import frappe
@@ -83,14 +85,49 @@ def _can_write():
     return bool(frappe.has_permission("Supplier", "write") or frappe.has_permission("Item", "write"))
 
 
+def _page():
+    rows = supplier_lead_rows()
+    items = sorted({r["item_code"] for r in rows["item_supplier_leads"]})
+    from pranera_planning.lead_time import _company, default_suppliers
+    pick = frappe.db.get_single_value("Re-order Settings", "item_rows_pick") or "Slowest"
+    return {**rows, "can_write": _can_write(), "company": _company(),
+            "item_defaults": default_suppliers(items), "item_rows_pick": pick}
+
+
 @frappe.whitelist()
 def get_lead_days():
     frappe.has_permission("Supplier", "read", throw=True)
-    return {**supplier_lead_rows(), "can_write": _can_write()}
+    return _page()
 
 
 @frappe.whitelist(methods=["POST"])
 def save_lead_days(data):
     data = json.loads(data) if isinstance(data, str) else (data or {})
     _save(data)
-    return {**supplier_lead_rows(), "can_write": _can_write()}
+    if "item_defaults" in data:
+        save_item_defaults(data.get("item_defaults") or {})
+    return _page()
+
+
+def save_item_defaults(wanted):
+    """{item: supplier or ""} — the items' Default Supplier (Item › Item Defaults) for the
+    user's company; only what changed is written. Empty clears it."""
+    from pranera_planning.lead_time import _company, default_suppliers
+    company = _company()
+    if not company:
+        frappe.throw(_("No default company is set, so the Default Supplier can't be saved: set one in Global Defaults."))
+    have = default_suppliers(list(wanted))
+    for item, supplier in wanted.items():
+        supplier = supplier or ""
+        if not item or supplier == (have.get(item) or ""):
+            continue
+        frappe.has_permission("Item", "write", item, throw=True)
+        doc = frappe.get_doc("Item", item)
+        row = next((r for r in doc.get("item_defaults") or [] if r.company == company), None)
+        if row:
+            row.default_supplier = supplier or None
+        elif supplier:
+            doc.append("item_defaults", {"company": company, "default_supplier": supplier})
+        else:
+            continue
+        doc.save()

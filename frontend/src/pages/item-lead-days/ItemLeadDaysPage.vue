@@ -28,26 +28,37 @@
             <span class="sub">{{ plural(filled(d.item_supplier_leads, 'item_code', 'lead_days'), 'row') }}</span>
           </div>
           <p class="hint">For an item bought from several suppliers (the same yarn from China in 45 days or from India in 15), or one that
-            takes longer than its supplier's usual days (melange 45). An item with no Default Supplier plans with the slowest of its rows
-            here, or the fastest, as <a :href="`${APP_BASE}/reorder-settings`">Re-order Settings</a> says; a Purchase Order uses the
-            row for its own supplier. Stored on the Item's Supplier Items row as <i>Lead days</i>.</p>
+            takes longer than its supplier's usual days (melange 45). Mark with <i class="pi pi-star-fill star-inline"></i> the supplier you
+            normally buy the item from: the re-order report plans with that supplier's days. With no default, it takes the
+            {{ (d.item_rows_pick || 'Slowest').toLowerCase() === 'fastest' ? 'fastest' : 'slowest' }} row
+            (<a :href="`${APP_BASE}/reorder-settings`">Re-order Settings</a>). A Purchase Order always uses the row for its own supplier.</p>
           <table class="data-table">
-            <thead><tr><th>Item</th><th>Supplier</th><th class="num">Lead days</th><th></th></tr></thead>
+            <thead><tr><th>Item</th><th>Supplier</th><th class="num">Lead days</th><th class="def">Default supplier</th><th>Re-order report</th><th></th></tr></thead>
             <tbody>
-              <tr v-if="!shownItems.length"><td colspan="4" class="empty">{{ search ? 'No item matches.' : 'None yet.' }}</td></tr>
+              <tr v-if="!shownItems.length"><td colspan="6" class="empty">{{ search ? 'No item matches.' : 'None yet.' }}</td></tr>
               <tr v-for="r in shownItems" :key="r._k">
                 <td class="wide"><LinkField v-model="r.item_code" doctype="Item" placeholder="Item" :disabled="!d.can_write" /></td>
                 <td class="wide"><LinkField v-model="r.supplier" doctype="Supplier" placeholder="Supplier" :disabled="!d.can_write" /></td>
                 <td class="num"><input v-model.number="r.lead_days" type="number" min="0" step="1" class="form-input n"
                                        :aria-label="`Lead days for ${r.item_code || 'new item'}`" :disabled="!d.can_write" /></td>
-                <td class="act"><button v-if="d.can_write" class="icon-btn" :aria-label="`Remove ${r.item_code || 'row'}`" @click="drop(d.item_supplier_leads, r)"><i class="pi pi-times"></i></button></td>
+                <td class="def">
+                  <button class="star" :class="{ on: isDefault(r) }" :disabled="!d.can_write || !r.item_code || !r.supplier"
+                          :aria-pressed="isDefault(r)" :title="isDefault(r) ? 'Default supplier: click to clear' : 'Make this the default supplier'"
+                          :aria-label="`${isDefault(r) ? 'Clear' : 'Set'} ${r.supplier || 'supplier'} as default supplier for ${r.item_code || 'item'}`"
+                          @click="toggleDefault(r)"><i :class="isDefault(r) ? 'pi pi-star-fill' : 'pi pi-star'"></i></button>
+                </td>
+                <td class="uses"><span v-if="usedBy(r)" class="badge" :class="usedBy(r) === 'default' ? 'badge-info' : 'badge-muted'">
+                  {{ usedBy(r) === 'default' ? 'used: default' : `used: ${usedBy(r)}, no default` }}</span>
+                  <span v-else-if="otherDefault(r)" class="sub">default is {{ otherDefault(r) }}</span></td>
+                <td class="act"><button v-if="d.can_write" class="icon-btn" :aria-label="`Remove ${r.item_code || 'row'}`" @click="dropRow(r)"><i class="pi pi-times"></i></button></td>
               </tr>
             </tbody>
           </table>
           <button v-if="d.can_write && d.lead_fields_ready" class="btn btn-outline add" @click="add(d.item_supplier_leads, { item_code: '', supplier: '', lead_days: null })">+ Add item</button>
         </section>
 
-        <p class="hint">Removing a row clears its lead days; the Item's Supplier Items row itself stays, as it may carry a part number. After saving, use Recalculate now in Re-order Settings (or wait for tonight) for the re-order levels to follow.</p>
+        <p class="hint">Removing a row clears its lead days (and the default, if it was the default); the Item's Supplier Items row itself stays, as it may carry a part number.
+          The default supplier is saved on the Item (Item Defaults, company {{ d.company || '—' }}), so desk shows it too. After saving, use Recalculate now in Re-order Settings (or wait for tonight) for the re-order levels to follow.</p>
       </template>
     </main>
   </div>
@@ -72,7 +83,7 @@ let seq = 0
 
 // _k keeps each row's identity while filtering; it is stripped before saving and comparing.
 const keyed = (rows) => (rows || []).map((r) => ({ ...r, _k: ++seq }))
-const plain = (v) => JSON.stringify(v.item_supplier_leads.map(({ _k, ...r }) => r))
+const plain = (v) => JSON.stringify({ rows: v.item_supplier_leads.map(({ _k, ...r }) => r), defaults: v.item_defaults || {} })
 const filled = (rows, key, days) => rows.filter((r) => r[key] && r[days] > 0).length
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 const match = (...xs) => !search.value || xs.some((x) => (x || '').toLowerCase().includes(search.value.toLowerCase()))
@@ -80,9 +91,40 @@ const match = (...xs) => !search.value || xs.some((x) => (x || '').toLowerCase()
 const shownItems = computed(() => (d.value?.item_supplier_leads || []).filter((r) => !r.item_code || match(r.item_code, r.supplier)))
 
 function take(res) {
-  d.value = { ...res, item_supplier_leads: keyed(res.item_supplier_leads) }
+  d.value = { ...res, item_supplier_leads: keyed(res.item_supplier_leads), item_defaults: { ...(res.item_defaults || {}) } }
   original = plain(d.value)
+  originalDefaults = { ...d.value.item_defaults }
   dirty.value = false
+}
+// Default supplier per item (Item › Item Defaults). Only items whose default changed are sent.
+let originalDefaults = {}
+const isDefault = (r) => !!r.item_code && !!r.supplier && d.value.item_defaults[r.item_code] === r.supplier
+function toggleDefault(r) {
+  d.value.item_defaults = { ...d.value.item_defaults, [r.item_code]: isDefault(r) ? '' : r.supplier }
+}
+function changedDefaults() {
+  const out = {}
+  for (const [item, sup] of Object.entries(d.value.item_defaults)) if ((originalDefaults[item] || '') !== (sup || '')) out[item] = sup || ''
+  return out
+}
+const otherDefault = (r) => {
+  const def = d.value.item_defaults[r.item_code]
+  return def && def !== r.supplier ? def : ''
+}
+// Which row the re-order report plans with: the default supplier's, else the slowest (or fastest) row.
+function usedBy(r) {
+  if (!r.item_code || !r.supplier || !(r.lead_days > 0)) return ''
+  const def = d.value.item_defaults[r.item_code]
+  if (def) return def === r.supplier ? 'default' : ''
+  const rows = d.value.item_supplier_leads.filter((x) => x.item_code === r.item_code && x.supplier && x.lead_days > 0)
+  const fastest = (d.value.item_rows_pick || '') === 'Fastest'
+  if ((d.value.item_rows_pick || '') === "Don't use") return ''
+  const pick = [...rows].sort((a, b) => (fastest ? a.lead_days - b.lead_days : b.lead_days - a.lead_days) || a.supplier.localeCompare(b.supplier))[0]
+  return pick === r ? (fastest ? 'fastest' : 'slowest') : ''
+}
+function dropRow(r) {
+  if (isDefault(r)) toggleDefault(r)
+  drop(d.value.item_supplier_leads, r)
 }
 function add(list, row) { list.push({ ...row, _k: ++seq }) }
 function drop(list, row) { list.splice(list.indexOf(row), 1) }
@@ -107,7 +149,7 @@ async function save() {
   try {
     const strip = (rows) => rows.map(({ _k, ...r }) => r)
     take(await callMessage('pranera_planning.api.supplier_lead_days.save_lead_days', {
-      data: { item_supplier_leads: strip(d.value.item_supplier_leads) },
+      data: { item_supplier_leads: strip(d.value.item_supplier_leads), item_defaults: changedDefaults() },
     }))
     saved.value = 'Saved. Recalculate in Re-order Settings (or wait for tonight) for the re-order levels to follow.'
   } catch (e) {
@@ -123,6 +165,13 @@ onMounted(load)
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .toolbar__actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .search { width: 240px; }
+.def { text-align: center; width: 120px; }
+.uses { white-space: nowrap; width: 190px; }
+.star { border: 0; background: transparent; cursor: pointer; font-size: 18px; color: var(--slate-400); padding: 4px 8px; }
+.star.on { color: #d97706; }
+.star:disabled { cursor: default; opacity: 0.4; }
+.star-inline { color: #d97706; font-size: 12px; }
+.badge-muted { background: var(--slate-100); color: var(--slate-700); }
 .card { margin-bottom: 16px; }
 .card__head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .h2 { margin: 0 0 6px; font-size: 16px; font-weight: 650; }

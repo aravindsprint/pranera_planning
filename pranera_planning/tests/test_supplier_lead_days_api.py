@@ -8,6 +8,9 @@ from pranera_planning.tests.test_stock_entry_checks import WORLD, _dict, _fake_f
 
 
 class FakeItem(_dict):
+    def get(self, key, default=None):
+        return dict.get(self, key, default)
+
     def append(self, table, values):
         self.setdefault(table, []).append(values)
 
@@ -18,11 +21,15 @@ class FakeItem(_dict):
 class TestSupplierLeadDaysApi(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        names = ["frappe", "frappe.utils", "pranera_planning.api.supplier_lead_days"]
+        names = ["frappe", "frappe.utils", "pranera_planning.api.supplier_lead_days", "pranera_planning.lead_time"]
         cls._saved = {n: sys.modules.get(n) for n in names}
         cls.fake = _fake_frappe()
         cls.fake["frappe.utils"].cint = lambda v: int(float(v or 0))
+        cls.fake["frappe.utils"].add_months = lambda d, n: d
+        cls.fake["frappe.utils"].today = lambda: "2026-10-05"
+        cls.fake["frappe"].db.get_single_value = lambda dt, f: "PSS" if f == "default_company" else None
         sys.modules.update(cls.fake)
+        sys.modules.pop("pranera_planning.lead_time", None)
         sys.modules.pop("pranera_planning.api.supplier_lead_days", None)
         cls.api = importlib.import_module("pranera_planning.api.supplier_lead_days")
 
@@ -51,6 +58,24 @@ class TestSupplierLeadDaysApi(unittest.TestCase):
         self.assertIn(("Item Supplier", "row-1", "lead_days", 45), written)           # existing row
         self.assertEqual(items["SLUB"]["supplier_items"], [{"supplier": "SRI MILLS", "lead_days": 30}])
         self.assertTrue(items["SLUB"]["saved"])
+
+
+    def test_default_supplier_is_set_changed_and_cleared(self):
+        f = self.fake["frappe"]
+        WORLD["Supplier"] = lambda flt: []
+        WORLD["Item Supplier"] = lambda flt: []
+        WORLD["Item Default"] = lambda flt: [_dict(parent="SLUB", default_supplier="TEXKNIT", company="PSS"),
+                                             _dict(parent="LYCRA", default_supplier="OMEGA", company="PSS")]
+        items = {"YRFPP090/GREIGE": FakeItem(name="YRFPP090/GREIGE", item_defaults=[_dict(company="PSS", default_supplier=None)]),
+                 "SLUB": FakeItem(name="SLUB", item_defaults=[_dict(company="PSS", default_supplier="TEXKNIT")]),
+                 "LYCRA": FakeItem(name="LYCRA", item_defaults=[_dict(company="PSS", default_supplier="OMEGA")]),
+                 "NEW": FakeItem(name="NEW", item_defaults=[])}
+        f.get_doc = lambda dt, name: items[name]
+        self.api.save_lead_days({"item_defaults": {"YRFPP090/GREIGE": "OMEGA", "SLUB": "TEXKNIT", "LYCRA": "", "NEW": "HANGZHOU"}})
+        self.assertEqual(items["YRFPP090/GREIGE"]["item_defaults"][0]["default_supplier"], "OMEGA")
+        self.assertNotIn("saved", items["SLUB"])                                   # unchanged: not saved
+        self.assertIsNone(items["LYCRA"]["item_defaults"][0]["default_supplier"])  # cleared
+        self.assertEqual(items["NEW"]["item_defaults"], [{"company": "PSS", "default_supplier": "HANGZHOU"}])
 
 
 if __name__ == "__main__":

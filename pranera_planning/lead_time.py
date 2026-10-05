@@ -59,8 +59,15 @@ def default_config():
 
 
 def _company():
+    """The user's default company, else the site's (Global Defaults)."""
     try:
-        return frappe.defaults.get_user_default("Company") or frappe.db.get_single_value("Global Defaults", "default_company")
+        user = frappe.defaults.get_user_default("Company")
+    except Exception:
+        user = None
+    if user:
+        return user
+    try:
+        return frappe.db.get_single_value("Global Defaults", "default_company")
     except Exception:
         return None
 

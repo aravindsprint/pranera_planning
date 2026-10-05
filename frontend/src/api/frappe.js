@@ -116,7 +116,7 @@ const json = (obj) => JSON.stringify(obj)
 export function call(method, args = {}) {
   const body = new URLSearchParams()
   for (const [k, v] of Object.entries(args)) {
-    if (v === undefined) continue
+    if (v === undefined || v === null) continue          // a null would arrive as the text "null"
     body.append(k, typeof v === 'object' && v !== null ? json(v) : v)
   }
   return request(`/api/method/${method}`, {

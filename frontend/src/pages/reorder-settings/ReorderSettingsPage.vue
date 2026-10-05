@@ -143,7 +143,8 @@
                   <div class="sub">
                     <template v-if="tryResult.supplier">Supplier {{ tryResult.supplier }}
                       ({{ tryResult.supplier_from === 'default' ? 'default supplier' : tryResult.supplier_from }})</template>
-                    <template v-else>No supplier found: only the item and group sources can apply.</template>
+                    <template v-else>No supplier found: the item has no Default Supplier{{ noSupplierWhy(tryResult) }}.
+                      Only the item and group sources can apply.</template>
                   </div>
                   <table class="data-table compact">
                     <tbody>
@@ -329,6 +330,11 @@ async function save() {
     busy.value = false
   }
 }
+function noSupplierWhy(r) {
+  if (r.fallback === 'No supplier') return ', and items without one use no supplier (setting above)'
+  if (r.fallback === 'Most bought from') return `, and no submitted Purchase Order in the last ${r.months} months`
+  return ' and no submitted Purchase Order'
+}
 function move(i, d) {
   const list = s.value.lead_sources
   ;[list[i], list[i + d]] = [list[i + d], list[i]]
@@ -339,7 +345,7 @@ async function runTry() {
   tryResult.value = null
   try {
     tryResult.value = await callMessage('pranera_planning.api.reorder_settings.explain_lead', {
-      item: tryItem.value, supplier: trySupplier.value || null,
+      item: tryItem.value, supplier: trySupplier.value || undefined,
       sources: s.value.lead_sources, no_default_supplier: s.value.no_default_supplier,
     })
   } catch (e) {

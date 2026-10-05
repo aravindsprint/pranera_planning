@@ -106,6 +106,9 @@ def explain_lead(item, supplier=None, sources=None, no_default_supplier=None):
     frappe.has_permission(DOCTYPE, "read", throw=True)
     from pranera_planning.lead_time import group_days_for, resolve
     from pranera_planning.reorder import load_settings
+    blank = (None, "", "null", "undefined")
+    supplier = None if supplier in blank else supplier
+    no_default_supplier = None if no_default_supplier in blank else no_default_supplier
     rows = json.loads(sources) if isinstance(sources, str) else (sources or [])
     cfg = load_settings()
     lead_cfg = dict(cfg["lead"])
@@ -121,7 +124,9 @@ def explain_lead(item, supplier=None, sources=None, no_default_supplier=None):
     ranked = rows or [{"source": LABELS[k], "enabled": 1} for k in DEFAULT_ORDER]
     return {
         "item": item, "days": res["days"], "winner": res["source"] and LABELS[res["source"]],
-        "supplier": res["supplier"], "supplier_from": res["supplier_from"], "text": res["text"],
+        "supplier": res["supplier"], "text": res["text"],
+        "supplier_from": "chosen above" if supplier else res["supplier_from"],
+        "fallback": lead_cfg["fallback"], "months": lead_cfg["months"],
         "sources": [{"source": r["source"], "enabled": cint(r.get("enabled")),
                      "value": res["values"].get(KEY_OF.get(r["source"]))} for r in ranked if r.get("source") in LABEL_KEYS],
     }

@@ -77,6 +77,15 @@ export const pages = [
   },
 
   {
+    path: 'item-lead-days',
+    title: 'Item Lead Days',
+    icon: 'pi pi-box',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/item-lead-days/ItemLeadDaysPage.vue'),
+  },
+
+  {
     path: 'settings',
     title: 'Settings',
     icon: 'pi pi-cog',

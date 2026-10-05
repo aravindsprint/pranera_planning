@@ -162,10 +162,13 @@
 
           <div class="lead-link">
             <span v-if="s.supplier_lead_counts?.ready">
-              Lead days are set for {{ s.supplier_lead_counts.suppliers }} suppliers and {{ s.supplier_lead_counts.items }} item exceptions.
+              Lead days are set for {{ plural(s.supplier_lead_counts.suppliers, 'supplier') }} and {{ plural(s.supplier_lead_counts.items, 'item exception') }}.
             </span>
             <span v-else class="warn-line">The supplier lead day fields aren't installed yet: run bench migrate.</span>
-            <a class="btn btn-outline" :href="`${APP_BASE}/supplier-lead-days`">Edit supplier lead days</a>
+            <span class="lead-link__actions">
+              <a class="btn btn-outline" :href="`${APP_BASE}/supplier-lead-days`">Supplier lead days</a>
+              <a class="btn btn-outline" :href="`${APP_BASE}/item-lead-days`">Item lead days</a>
+            </span>
           </div>
 
           <h3 class="h3 gap">Purchase Order check</h3>
@@ -269,6 +272,7 @@ const trySupplier = ref('')
 const tryResult = ref(null)
 const tryBusy = ref(false)
 const tryError = ref('')
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })
 let original = ''
 
@@ -398,6 +402,7 @@ td.wide { min-width: 240px; }
 .rank__move { display: flex; gap: 2px; }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .try { margin-top: 16px; }
+.lead-link__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .lead-link { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 12px 14px; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 8px; font-size: 13px; }
 .try__row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: start; }

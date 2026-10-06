@@ -356,3 +356,10 @@ A Make qty line means "this much more", once. On Create the project's saved plan
 item that had a Make qty line as one Top up to line at the level the plan reaches — the own and
 coming stock it counted plus what it requested (`plan_math.lines_to_save`) — so re-planning
 buys only what is missing from that level instead of the same quantity again.
+
+## Own stock in a made-to-stock plan
+
+A made-to-stock plan counts as its own stock: the project's, any other made-to-stock
+project's (free for anyone) and stock with no project (old stock from before projects were
+required) — the same free stock the re-order report counts (`planner.counts_as_own`).
+A made-to-order plan counts only its own project's stock.

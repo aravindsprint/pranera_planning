@@ -4,7 +4,8 @@ on Create, makes them. Create always rebuilds the proposal first, so it never ac
 numbers.
 
 Made to order   one project, chosen by the planner (lines usually from its Sales Order).
-Made to stock   each line goes to the stock project of its family and period:
+Made to stock   own stock = the project's, any made-to-stock project's, and stock with no project.
+                each line goes to the stock project of its family and period:
                 family = Commercial Name (cleaned up), else the top item group;
                 made items → a Production stock project, bought items → a Purchase one;
                 named by Re-order Settings' pattern, created on Create if it doesn't exist.
@@ -106,6 +107,20 @@ def bom_tree(codes, depth=10, chosen=None):
 
 
 # ── stock: lots, held, coming ─────────────────────────────────────────────────
+
+def counts_as_own(lot_project, project, order_type, kinds):
+    """Whether free stock under `lot_project` counts as the plan's own stock.
+
+    Made to order: only the project's own stock.
+    Made to stock: the project's own, any made-to-stock project's (free for anyone), and stock
+    with no project at all (old stock from before projects were required) — the same free stock
+    the re-order report counts, so the plan doesn't buy while it sits in stores."""
+    if order_type == MTO:
+        return bool(project) and same_project(lot_project, project)
+    if not lot_project:
+        return True
+    return (bool(project) and same_project(lot_project, project)) or kinds.get(lot_project) == MTS
+
 
 def free_lots(items):
     """{item: [{"batch_no", "warehouse", "roll_no", "qty", "project", "produced"}]}, oldest batch
@@ -300,9 +315,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                                 fields=["name", "planning_order_type"], as_list=True)) if lot_projects and _has("Project", "planning_order_type") else {}
 
     def is_own(lot):
-        if order_type == MTO:
-            return bool(project) and same_project(lot["project"], project)
-        return (bool(project) and same_project(lot["project"], project)) or kinds.get(lot["project"]) == MTS
+        return counts_as_own(lot["project"], project, order_type, kinds)
 
     def is_borrowable(lot):
         return lot["project"] and not lot["produced"] and kinds.get(lot["project"]) != MTO and not is_own(lot)

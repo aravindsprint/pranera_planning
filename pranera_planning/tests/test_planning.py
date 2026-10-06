@@ -78,6 +78,17 @@ class TestPropose(unittest.TestCase):
         return P.propose({"order_type": "Made to order", "project": "26PTIN1710", "sales_order": "SO-1", "needed_by": "2026-11-15",
                           "lines": [{"item": SKF, "qty": 2000}, {"item": GKF, "qty": 300}]})[0]
 
+    def test_what_counts_as_own_stock(self):
+        own, kinds = self.P.counts_as_own, {"25PUR001": "Made to stock", "PTIN1710": "Made to order"}
+        mts, mto = "Made to stock", "Made to order"
+        self.assertTrue(own(None, "26STK-YARN-Q4-01", mts, kinds))           # old stock, no project
+        self.assertTrue(own("", "26STK-YARN-Q4-01", mts, kinds))
+        self.assertTrue(own("25PUR001", "26STK-YARN-Q4-01", mts, kinds))     # another stock project
+        self.assertTrue(own("26STK-YARN-Q4-01", "26STK-YARN-Q4-01", mts, kinds))
+        self.assertFalse(own("PTIN1710", "26STK-YARN-Q4-01", mts, kinds))    # another order's stock
+        self.assertFalse(own(None, "PTIN1710", mto, kinds))                  # an order counts only its own
+        self.assertTrue(own("PTIN1710", "PTIN1710", mto, kinds))
+
     def test_mto_numbers(self):
         p = self.run_mto()
         lv = {r["item"]: r for r in p["levels"]}

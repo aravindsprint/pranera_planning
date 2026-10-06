@@ -66,8 +66,10 @@ def build_plan(lines, items, rules):
         if q <= EPS:
             continue
         mode = ln.get("mode") or "need"
-        asks.setdefault(ln["item"], []).append((q, ln.get("label") or {"top_up": f"level {fmt(q)}",
-                                                                         "make": f"make {fmt(q)}"}.get(mode, f"ordered {fmt(q)}"), mode))
+        # always say which mode: "make 2,000" or "level 2,000", then where the line came from
+        how = {"top_up": f"level {fmt(q)}", "make": f"make {fmt(q)}"}.get(mode, f"ordered {fmt(q)}")
+        text = f"{how} ({ln['label']})" if ln.get("label") else how
+        asks.setdefault(ln["item"], []).append((q, text, mode))
 
     # reachable items and how many parents each has (parents are processed first)
     parents, seen, todo = {}, set(), list(asks)

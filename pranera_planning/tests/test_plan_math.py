@@ -133,3 +133,16 @@ class TestLinesToSave(unittest.TestCase):
         lines = [{"item": "Y", "qty": 800, "mode": "top_up"}, {"item": "Y", "qty": 300, "mode": "make"}]
         out = self.save(lines, [{"item": "Y", "request": 500}], {"Y": 600})
         self.assertEqual(out, [{"item": "Y", "qty": 1100.0, "mode": "top_up"}])
+
+
+class TestNeedText(unittest.TestCase):
+    def how(self, mode, label=None):
+        from pranera_planning.plan_math import build_plan, scenario_rules
+        line = {"item": "Y", "qty": 2000, "mode": mode, **({"label": label} if label else {})}
+        plan = build_plan([line], {"Y": {"own": 1000}}, scenario_rules("Purchase", "Made to stock"))
+        return plan["levels"][0]["how"][0][1]
+
+    def test_the_mode_always_shows_with_where_the_line_came_from(self):
+        self.assertEqual(self.how("make", "saved plan"), "make 2,000 (saved plan)")
+        self.assertEqual(self.how("top_up", "saved plan"), "level 2,000 (saved plan)")
+        self.assertEqual(self.how("top_up"), "level 2,000")

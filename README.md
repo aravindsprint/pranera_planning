@@ -349,3 +349,10 @@ A made-to-stock plan buys for stock on purpose, so the Material Requests it crea
 submit it records the free stock it found as a comment. Requests made by hand, and requests
 from made-to-order plans, are checked as before. The flag isn't copied to a duplicate or an
 amendment, so those are checked normally.
+
+## Make qty is used once
+
+A Make qty line means "this much more", once. On Create the project's saved plan keeps every
+item that had a Make qty line as one Top up to line at the level the plan reaches — the own and
+coming stock it counted plus what it requested (`plan_math.lines_to_save`) — so re-planning
+buys only what is missing from that level instead of the same quantity again.

@@ -27,7 +27,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, flt, getdate, today
 
-from pranera_planning.plan_math import allocate_lots, build_plan, scenario_rules
+from pranera_planning.plan_math import lines_to_save, allocate_lots, build_plan, scenario_rules
 from pranera_planning.reorder import _top_group, load_settings
 from pranera_planning.reorder_math import (
     DEFAULT_STOCK_PATTERN, deepest, next_seq, normalise_family, period_of, stock_project_name,
@@ -404,6 +404,8 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     return {"project": proj, "order_type": order_type, "rules": rules, "needed_by": needed_by,
             "sales_order": payload.get("sales_order") if order_type == MTO else None,
             "lines": lines, "levels": levels, "reservations": reservations, "requests": requests, "warnings": warnings,
+            "stock_before": {ln["item"]: flt((data.get(ln["item"]) or {}).get("own")) + flt((data.get(ln["item"]) or {}).get("coming"))
+                             for ln in lines},
             "totals": {"own": sum(l["own"] for l in levels), "coming": sum(l["coming"] for l in levels),
                        "reserve": sum(l["reserve"] for l in levels),
                        "requests": sum(1 for k in requests if requests[k]), "request_lines": sum(len(v) for v in requests.values())}}
@@ -472,7 +474,8 @@ def _create_one(prop):
         frappe.db.set_value("Project", project, "saved_plan", json.dumps({
             "saved_on": str(today()), "order_type": prop["order_type"], "needed_by": prop["needed_by"],
             "sales_order": prop.get("sales_order"),
-            "lines": [{"item": ln["item"], "qty": flt(ln["qty"]), "mode": ln.get("mode") or "need"} for ln in prop["lines"]],
+            # Make qty lines come back as Top up to the level reached, so a re-plan doesn't order them again
+            "lines": lines_to_save(prop["lines"], prop["levels"], prop.get("stock_before") or {}),
         }))
 
     made_res = []

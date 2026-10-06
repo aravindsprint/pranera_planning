@@ -108,3 +108,28 @@ class TestAllocation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLinesToSave(unittest.TestCase):
+    def save(self, *a):
+        from pranera_planning.plan_math import lines_to_save
+        return lines_to_save(*a)
+
+    def test_make_qty_comes_back_as_the_level_reached(self):
+        # held 0, nothing coming, make 1,000 -> next time: top up to 1,000 (nothing more to buy)
+        out = self.save([{"item": "YARN", "qty": 1000, "mode": "make"}], [{"item": "YARN", "request": 1000}], {"YARN": 0})
+        self.assertEqual(out, [{"item": "YARN", "qty": 1000.0, "mode": "top_up"}])
+
+    def test_level_counts_what_was_held_and_coming_and_the_rounded_request(self):
+        out = self.save([{"item": "YARN", "qty": 590, "mode": "make"}], [{"item": "YARN", "request": 600}], {"YARN": 400})
+        self.assertEqual(out[0], {"item": "YARN", "qty": 1000.0, "mode": "top_up"})
+
+    def test_top_up_and_need_lines_are_kept(self):
+        lines = [{"item": "A", "qty": 500, "mode": "top_up"}, {"item": "B", "qty": 20, "mode": "need"}]
+        self.assertEqual(self.save(lines, [], {}), [{"item": "A", "qty": 500.0, "mode": "top_up"},
+                                                     {"item": "B", "qty": 20.0, "mode": "need"}])
+
+    def test_an_item_with_both_becomes_one_level(self):
+        lines = [{"item": "Y", "qty": 800, "mode": "top_up"}, {"item": "Y", "qty": 300, "mode": "make"}]
+        out = self.save(lines, [{"item": "Y", "request": 500}], {"Y": 600})
+        self.assertEqual(out, [{"item": "Y", "qty": 1100.0, "mode": "top_up"}])

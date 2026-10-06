@@ -143,3 +143,32 @@ def fmt(x, decimals=2):
     if abs(x - round(x)) < 1e-9:
         return f"{int(round(x)):,}"
     return f"{x:,.{decimals}f}".rstrip("0").rstrip(".")
+
+
+def lines_to_save(lines, levels, stock_before):
+    """The plan lines kept on the project after Create, for the next re-plan.
+
+    A make line means "this much more", once: kept as it is, re-planning would order it again
+    even after it arrived. So every item with a make line is saved as one top_up line at the
+    level the plan reaches — the stock it counted (own + coming) plus what it requested at
+    that item's level — and a re-plan then buys only what is missing from that level.
+    Other lines are kept as they are.
+
+    lines         [{"item", "qty", "mode"}] as planned
+    levels        the plan's levels [{"item", "request", ...}]
+    stock_before  {item: own + coming the plan counted for that item}
+    """
+    made_items = {ln["item"] for ln in lines if ln.get("mode") == "make"}
+    request = {}
+    for lv in levels:
+        request[lv["item"]] = request.get(lv["item"], 0.0) + float(lv.get("request") or 0)
+    out, done = [], set()
+    for ln in lines:
+        item = ln["item"]
+        if item not in made_items:
+            out.append({"item": item, "qty": float(ln.get("qty") or 0), "mode": ln.get("mode") or "need"})
+        elif item not in done:
+            done.add(item)
+            level = float(stock_before.get(item) or 0) + request.get(item, 0.0)
+            out.append({"item": item, "qty": round(level, 6), "mode": "top_up"})
+    return out

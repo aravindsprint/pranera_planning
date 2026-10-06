@@ -127,6 +127,17 @@ class TestFreeStock(unittest.TestCase):
         self.assertIn("Free lot is a different shade", d.comments[0])
         self.assertIn("tester@example.com", d.comments[0])
 
+    def test_a_stock_plans_request_is_not_blocked_but_noted(self):
+        self.settings()
+        self.frappe.roles = ["Stock User"]
+        d = self.request()
+        d.from_stock_plan = 1
+        self.assertEqual(self.run_check(d, "validate"), "allowed")
+        self.assertEqual(self.frappe.messages, [])                    # no orange notice on save
+        self.assertEqual(self.run_check(d, "before_submit"), "allowed")
+        self.assertIn("From a stock plan", d.comments[0])
+        self.assertIn("1,175", d.comments[0])
+
     def test_override_role_without_a_reason_is_asked_for_one(self):
         self.settings(roles=("Buyer Head",))
         self.frappe.roles = ["Buyer Head"]

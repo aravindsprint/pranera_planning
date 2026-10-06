@@ -1363,6 +1363,9 @@ def check_material_request(doc, method=None):
     project), ignoring free stock below the item group's minimum. See
     reservation_math.purchase_shortfall and Stock Reservation Settings.
 
+    A request from a made-to-stock plan (from_stock_plan) is never blocked: it buys for stock
+    on purpose; the free stock found is recorded as a comment on submit.
+
     On save: an orange notice. On submit, in Block mode: refused — unless the user has a
     role listed in the settings and has filled in reservation_override_reason, which is then
     recorded as a comment. A failure in the check itself never stops the request; it is
@@ -1379,6 +1382,12 @@ def check_material_request(doc, method=None):
             return
         breaches = _purchase_shortfalls(doc, cfg)
         if not breaches:
+            return
+        if doc.get("from_stock_plan"):
+            # A made-to-stock plan buys for stock on purpose: keep a record of the free stock, don't block.
+            if submitting:
+                doc.add_comment("Comment", _("From a stock plan, so the free-stock check didn't block it. Free at submit: {0}").format(
+                    "; ".join(f"{b['item_code']} {b['free_counted']:,.0f}" for b in breaches)))
             return
         can_override = bool(cfg["roles"] & set(frappe.get_roles()))
         reason = (doc.get("reservation_override_reason") or "").strip()

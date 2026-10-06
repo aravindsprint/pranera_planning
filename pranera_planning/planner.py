@@ -497,6 +497,8 @@ def _create_one(prop):
                              "transaction_date": today(), "schedule_date": prop["needed_by"]})
         if _has("Material Request", "for_project"):
             mr.for_project = project
+        if prop["order_type"] == MTS and _has("Material Request", "from_stock_plan"):
+            mr.from_stock_plan = 1                     # buys for stock on purpose: not blocked by free stock
         for ln in lines:
             uom = uoms.get(ln["item_code"])
             row = {"item_code": ln["item_code"], "qty": ln["qty"], "schedule_date": prop["needed_by"], "project": project,

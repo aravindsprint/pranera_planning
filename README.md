@@ -341,3 +341,11 @@ each with its learned median as a guide. The re-order report uses the stage's us
 the Plan tab shows the days of the route chosen on each level (`stage_route_days`). A stage may
 appear only once (`ReorderSettings.validate`). Patch `split_stage_days_by_route` moves a Job-work
 stage's old Days used to Job work days and merges stages entered twice.
+
+## Stock-plan requests and the free-stock check
+
+A made-to-stock plan buys for stock on purpose, so the Material Requests it creates carry
+`from_stock_plan` (patch `add_stock_plan_flag`). The free-stock check doesn't block them; on
+submit it records the free stock it found as a comment. Requests made by hand, and requests
+from made-to-order plans, are checked as before. The flag isn't copied to a duplicate or an
+amendment, so those are checked normally.

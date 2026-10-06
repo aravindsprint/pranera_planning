@@ -13,3 +13,4 @@ pranera_planning.patches.stock_project_sequence
 pranera_planning.patches.add_sales_order_mto_field
 pranera_planning.patches.add_supplier_lead_days
 pranera_planning.patches.split_stage_days_by_route
+pranera_planning.patches.add_stock_plan_flag

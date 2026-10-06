@@ -99,4 +99,5 @@ after_install = [
     "pranera_planning.patches.add_saved_plan_field.execute",
     "pranera_planning.patches.add_sales_order_mto_field.execute",
     "pranera_planning.patches.add_supplier_lead_days.execute",
+    "pranera_planning.patches.add_stock_plan_flag.execute",
 ]

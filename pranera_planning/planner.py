@@ -527,4 +527,10 @@ def _create_one(prop):
             mr.append("items", row)
         mr.insert()
         made_mr.append({"name": mr.name, "kind": kind, "lines": len(lines)})
+    # Time and Action plan: built from the same proposal; a failure never stops Create
+    try:
+        from pranera_planning.ta import build_from_proposal
+        build_from_proposal(project, prop)
+    except Exception:
+        frappe.log_error(title=f"Time and Action plan not built for {project}")
     return {"project": project, "project_name": proj.get("project_name"), "reservations": made_res, "requests": made_mr}

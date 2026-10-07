@@ -372,3 +372,23 @@ level** with what a plan would buy (also per item, in the *To plan* column). Onc
 later period than the one the project was created in, it offers **Close programme**
 (`close_programme`: status Completed; the stock stays free for any order). The button to re-plan
 reads **Top up**.
+
+## Time and Action (T&A) plans — step 1
+
+Every project (orders and stock programmes) gets a **Time and Action Plan** (doctype, one per
+project, child *Time and Action Activity*), built on Create in the Plan tab or with *Rebuild from
+plan* (`ta.py`; scheduling in `ta_math.py`). Each level the plan makes or buys becomes an
+activity, scheduled backwards from the Sales Order's delivery date (else the plan's Needed by):
+the top level ends on that date, each level below ends when the one above starts, and lasts its
+stage days for its route (Re-order Settings) or, bought, its supplier's lead days. A last milestone
+marks the date; more milestones (lab dip, PP sample, dispatch) are added by hand.
+
+Actuals are read, not typed: Work Orders (in-house), subcontracting POs and Subcontracting
+Receipts (job work), POs and Purchase Receipts (bought), all under the project. 98 % of the
+planned quantity counts as done. A rebuild keeps activities already started and manual
+milestones, and each activity keeps its first planned end (baseline) to show slippage.
+The *Time & Action* tab on Project Planning shows a timeline (planned, actual, today, delivery)
+and the editable activity list.
+
+Next steps: workstations (stage, capacity, dia/gauge on the Workstation) and allocation;
+then the blocking checks and the cross-order reports.

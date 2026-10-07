@@ -46,6 +46,7 @@
       <template v-else>
         <OverviewTab v-if="tab === 'overview'" :project="project" @go="go" @loaded="(p) => (info = p)" />
         <PlanPage v-else-if="tab === 'plan'" embedded :for-project="project" @created="onCreated" />
+        <TimeActionTab v-else-if="tab === 'ta'" :project="project" />
         <ProjectStockReservationPage v-else embedded :for-project="project" @open-project="(p) => choose(p, 'stock')" />
       </template>
     </main>
@@ -60,12 +61,14 @@ import LinkField from '@/components/LinkField.vue'
 import { callMessage } from '@/api/frappe'
 import { APP_BASE } from '@/config/app'
 import OverviewTab from './OverviewTab.vue'
+import TimeActionTab from './TimeActionTab.vue'
 import PlanPage from '@/pages/plan/PlanPage.vue'
 import ProjectStockReservationPage from '@/pages/project-stock-reservation/ProjectStockReservationPage.vue'
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'plan', label: 'Plan' },
+  { key: 'ta', label: 'Time & Action' },
   { key: 'stock', label: 'Stock & reservations' },
 ]
 const route = useRoute()

@@ -9,8 +9,8 @@ goods are needed:
     an activity lasts its stage's days for its route (In-house or Job work days in Re-order
     Settings), or for a bought item its supplier's lead days.
 
-Only levels the plan actually makes or buys (request > 0) get an activity: stock that is
-already there needs no time. A last milestone marks the delivery date itself.
+Only levels with something still to arrive get an activity — what the plan requests now plus
+what the project already has coming: stock already in stores needs no time. A last milestone marks the delivery date itself.
 """
 import math
 from datetime import date, datetime, timedelta
@@ -45,7 +45,11 @@ def schedule(levels, deliver_on, final_label="Ready to deliver"):
     Each activity: {"seq", "activity", "kind", "stage", "item_code", "item_name", "qty", "uom",
                     "route", "supplier", "duration_days", "planned_start", "planned_end", "source"}"""
     deliver_on = _d(deliver_on)
-    work = [lv for lv in levels if float(lv.get("request") or 0) > 0]
+    # What still has to arrive: new requests plus what this project already has coming (its own
+    # open requests and orders) — yarn ordered but not yet received is still an activity.
+    def todo(lv):
+        return float(lv.get("request") or 0) + float(lv.get("coming") or 0)
+    work = [lv for lv in levels if todo(lv) > 0]
     by_depth = {}
     for lv in work:
         by_depth.setdefault(int(lv.get("depth") or 0), []).append(lv)
@@ -63,7 +67,7 @@ def schedule(levels, deliver_on, final_label="Ready to deliver"):
                 "kind": STAGE if made else BOUGHT,
                 "stage": lv.get("stage") if made else "",
                 "item_code": lv["item"], "item_name": lv.get("item_name") or lv["item"],
-                "qty": round(float(lv["request"]), 3), "uom": lv.get("uom") or "",
+                "qty": round(todo(lv), 3), "uom": lv.get("uom") or "",
                 "route": (lv.get("route") or "In-house") if made else "Bought",
                 "supplier": lv.get("supplier") or "", "service": lv.get("service") or "",
                 "duration_days": dur, "planned_start": str(start), "planned_end": str(end),
@@ -89,8 +93,9 @@ def merge(old, new):
                if a.get("source") == "plan" and a.get("kind") != MILESTONE and a.get("actual_start")}
     baseline = {(a.get("kind"), a.get("item_code"), a.get("activity")): a.get("baseline_end") or a.get("planned_end")
                 for a in old if a.get("source") == "plan"}
-    out = []
+    out, matched = [], set()
     for a in new:
+        matched.add((a["kind"], a["item_code"]))
         key = (a["kind"], a["item_code"])
         if key in started and a["kind"] != MILESTONE:
             keep = started[key]
@@ -99,6 +104,8 @@ def merge(old, new):
                  "remarks": keep.get("remarks")}
         a["baseline_end"] = baseline.get((a["kind"], a["item_code"], a["activity"])) or a["planned_end"]
         out.append(a)
+    # started activities the new plan no longer needs (received, or covered by stock) stay as history
+    out += [a for k, a in started.items() if k not in matched]
     out += [a for a in old if a.get("source") != "plan"]
     out.sort(key=lambda a: (str(a.get("planned_end") or "9999"), a.get("kind") == MILESTONE))
     for i, a in enumerate(out, 1):

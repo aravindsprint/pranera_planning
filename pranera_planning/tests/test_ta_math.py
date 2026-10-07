@@ -33,7 +33,20 @@ class TestSchedule(unittest.TestCase):
         self.assertNotIn("OWN", [a["item_code"] for a in self.acts])
 
 
+class TestComing(unittest.TestCase):
+    def test_what_is_already_coming_is_still_an_activity(self):
+        lv = [{"item": "YARN", "request": 0, "coming": 2000, "made": False, "depth": 0, "lead_days": 45}]
+        acts = T.schedule(lv, "2026-11-24")
+        self.assertEqual((acts[0]["activity"], acts[0]["qty"], acts[0]["planned_start"]), ("Buy", 2000.0, "2026-10-10"))
+
+
 class TestMerge(unittest.TestCase):
+    def test_a_started_activity_no_longer_needed_stays_as_history(self):
+        old = T.schedule([{"item": "YARN", "request": 2000, "made": False, "depth": 0, "lead_days": 45}], "2026-11-24")
+        old[0]["actual_start"] = "2026-10-10"
+        out = T.merge(old, T.schedule([], "2026-11-24"))
+        self.assertIn("YARN", [a["item_code"] for a in out])
+
     def test_started_activities_keep_their_dates_and_baselines_stay(self):
         old = T.schedule(LEVELS, "2026-12-31")
         for a in old:

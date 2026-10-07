@@ -57,13 +57,20 @@ def build_from_proposal(project, prop):
     name = frappe.db.exists(DOCTYPE, {"project": project})
     doc = frappe.get_doc(DOCTYPE, name) if name else frappe.new_doc(DOCTYPE)
     old = [_plain(r) for r in doc.get("activities") or []]
+    for a in old:                                       # stage starts aren't stored: read them
+        if a.get("source") == "plan" and a.get("kind") != ta_math.MILESTONE and not a.get("actual_start"):
+            a["actual_start"] = actual_for(project, a).get("start")
     merged = ta_math.merge(old, new)
     p = frappe.db.get_value("Project", project, ["sales_order", "customer"], as_dict=True) or {}
     doc.update({"project": project, "order_type": order_type, "sales_order": p.get("sales_order"),
                 "customer": p.get("customer"), "deliver_on": deliver_on(project, prop), "generated_on": now_datetime()})
     doc.set("activities", [])
     for a in merged:
-        doc.append("activities", {k: v for k, v in a.items() if k != "name" and v not in (None, "")})
+        row = {k: v for k, v in a.items() if k != "name" and v not in (None, "")}
+        if row.get("source") == "plan" and row.get("kind") != ta_math.MILESTONE:
+            row.pop("actual_start", None)                 # read from the documents, never stored
+            row.pop("actual_end", None)
+        doc.append("activities", row)
     doc.flags.ignore_permissions = True
     doc.save() if name else doc.insert()
     return doc.name

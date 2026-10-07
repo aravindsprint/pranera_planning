@@ -407,3 +407,15 @@ free slot. Booking sets the activity's machine, start and an end that follows fr
 capacity. It is refused when the machine doesn't fit (stage, dia, gauge) or would go over capacity
 on any day, unless an override role (Stock Reservation Settings) gives a reason (kept in the
 activity's remarks and as a comment). A T&A rebuild keeps booked activities' machine and dates.
+
+## Choosing which lots to borrow
+
+In the plan proposal, a level with borrowable stock has **Choose lots** under *Reserve*: a picker
+listing every lot the plan could borrow (project, batch, warehouse, roll, free qty), pre-ticked
+with the plan's own choice. Ticked lots and quantities go to the planner as `picks`
+(`{item: [{key, qty}]}`, key = batch|warehouse|roll, `plan_math.apply_picks`); the plan then
+borrows only those, in that order, capped at what is free and at what the level needs — the rest
+is made or bought. *Let the plan choose* goes back to automatic. Create re-checks with the same
+picks and reserves exactly them; a chosen lot no longer free is left out with a warning.
+Reserving by hand on Stock & reservations still works too: stock held for the project counts as
+its own before anything is borrowed.

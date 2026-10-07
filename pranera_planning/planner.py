@@ -28,7 +28,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, flt, getdate, today
 
-from pranera_planning.plan_math import lines_to_save, allocate_lots, build_plan, scenario_rules
+from pranera_planning.plan_math import apply_picks, lot_key, lines_to_save, allocate_lots, build_plan, scenario_rules
 from pranera_planning.reorder import _top_group, load_settings
 from pranera_planning.reorder_math import (
     DEFAULT_STOCK_PATTERN, deepest, next_seq, normalise_family, period_of, stock_project_name,
@@ -338,7 +338,9 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         "Item Group", filters={"name": ["in", list(set(groups.values()))]}, fields=["name", "lft", "rgt"])} if groups else {}
 
     data = {}
-    own_lots, borrow_lots = {}, {}
+    own_lots, borrow_lots, all_borrow, picked_by_user = {}, {}, {}, set()
+    picks = payload.get("picks") or {}
+    pick_warnings = []
     for code in codes:
         it = info.get(code) or frappe._dict()
         made = rules["explode"] and code in boms
@@ -346,6 +348,12 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         round_to = 1.0 if made else (flt(rule.round_to) if rule and rule.round_to else cfg["round_to"])
         own_lots[code] = [l for l in lots.get(code, []) if is_own(l)]
         borrow_lots[code] = [l for l in lots.get(code, []) if is_borrowable(l)]
+        all_borrow[code] = list(borrow_lots[code])
+        if code in picks:                               # the user chose which lots to borrow
+            borrow_lots[code], gone = apply_picks(borrow_lots[code], picks[code])
+            picked_by_user.add(code)
+            if gone:
+                pick_warnings.append(_("{0}: {1} chosen lot(s) are no longer free and were left out.").format(code, len(gone)))
         data[code] = {"made": made, "bom": rows.get(code, []), "round_to": round_to,
                       "own": sum(l["qty"] for l in own_lots[code]) + flt(held.get(code)),
                       "coming": flt(come.get(code)), "borrowable": sum(l["qty"] for l in borrow_lots[code])}
@@ -364,7 +372,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     routes = (payload.get("routes") or {})
     chosen_services = (payload.get("services") or {})
     previous = last_service([r["item"] for r in plan["levels"] if r["made"]])
-    levels, reservations, requests, warnings = [], [], {"Manufacture": [], "Job work": [], "Purchase": []}, []
+    levels, reservations, requests, warnings = [], [], {"Manufacture": [], "Job work": [], "Purchase": []}, list(pick_warnings)
     needed_by = str(getdate(payload.get("needed_by") or add_days(today(), 30)))
 
     for r in plan["levels"]:
@@ -411,7 +419,12 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "service_from": ("this item's last job work" if previous.get(code) == service and service else
                                         "the stage's most common" if service else ""),
                        "coming_from": come_src.get(code, []), "held": held_here,
-                       "reserve_from": sorted({l["project"] for l in borrow_lots[code]})[:3] if r["reserve"] > EPS else []})
+                       "reserve_from": sorted({l["project"] for l in borrow_lots[code]})[:3] if r["reserve"] > EPS else [],
+                       "lots_picked": code in picked_by_user,
+                       "lots": [{"key": lot_key(l), "project": l["project"], "batch_no": l["batch_no"], "warehouse": l["warehouse"],
+                                 "roll_no": l.get("roll_no") or "", "free": round(l["qty"], 3)} for l in all_borrow.get(code, [])],
+                       "lots_taken": {lot_key(l): round(l["qty"], 3) for l in
+                                      allocate_lots(borrow_lots[code], r["reserve"])[0]} if r["reserve"] > EPS else {}})
 
     # bought levels: when the usual supplier would deliver an order placed today
     arrivals = bought_arrivals([l["item"] for l in levels if not l["made"]], info, gbounds, cfg)

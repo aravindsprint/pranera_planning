@@ -174,3 +174,30 @@ def lines_to_save(lines, levels, stock_before):
             level = float(stock_before.get(item) or 0) + request.get(item, 0.0)
             out.append({"item": item, "qty": round(level, 6), "mode": "top_up"})
     return out
+
+
+def lot_key(lot):
+    """A lot's identity for the planner's lot picker: batch | warehouse | roll."""
+    return f"{lot.get('batch_no') or ''}|{lot.get('warehouse') or ''}|{lot.get('roll_no') or ''}"
+
+
+def apply_picks(lots, picks):
+    """The lots the user chose to borrow, in the order chosen, each capped at what is still free.
+
+    lots   the borrowable lots [{"batch_no", "warehouse", "roll_no", "qty", ...}]
+    picks  [{"key", "qty"}] from the picker
+    Returns (chosen lots [{..., "qty": picked}], [keys no longer free])."""
+    by_key = {lot_key(l): l for l in lots}
+    out, gone = [], []
+    for p in picks or []:
+        lot = by_key.get(p.get("key"))
+        q = float(p.get("qty") or 0)
+        if q <= EPS:
+            continue
+        if not lot:
+            gone.append(p.get("key"))
+            continue
+        take = min(q, float(lot["qty"]))
+        if take > EPS:
+            out.append({**lot, "qty": take})
+    return out, gone

@@ -146,3 +146,15 @@ class TestNeedText(unittest.TestCase):
         self.assertEqual(self.how("make", "saved plan"), "make 2,000 (saved plan)")
         self.assertEqual(self.how("top_up", "saved plan"), "level 2,000 (saved plan)")
         self.assertEqual(self.how("top_up"), "level 2,000")
+
+
+class TestPicks(unittest.TestCase):
+    LOTS = [{"batch_no": "B1", "warehouse": "Stores", "roll_no": "", "qty": 975, "project": "25PUR001"},
+            {"batch_no": "B2", "warehouse": "Stores", "roll_no": "", "qty": 1000, "project": "PROJ-0004"}]
+
+    def test_chosen_lots_in_order_capped_at_free(self):
+        from pranera_planning.plan_math import apply_picks
+        got, gone = apply_picks(self.LOTS, [{"key": "B2|Stores|", "qty": 600}, {"key": "B1|Stores|", "qty": 2000},
+                                            {"key": "B9|Stores|", "qty": 5}])
+        self.assertEqual([(l["batch_no"], l["qty"]) for l in got], [("B2", 600.0), ("B1", 975.0)])
+        self.assertEqual(gone, ["B9|Stores|"])

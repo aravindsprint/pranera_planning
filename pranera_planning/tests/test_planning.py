@@ -64,7 +64,7 @@ class TestPropose(unittest.TestCase):
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
             [("26PTIN1710", "Made to order"), ("25PUR001", "Made to stock"), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
 
-    def run_mto(self):
+    def run_mto(self, picks=None):
         P = self.P
         P.free_lots = lambda codes: {
             DKF: [lot("DKF-B1", 98, "26PTIN1710", produced=True)],
@@ -76,7 +76,7 @@ class TestPropose(unittest.TestCase):
         self.f.db.get_value = lambda dt, name, fields=None, **kw: _dict(name="26PTIN1710", project_name="26PTIN1710",
                                                                          project_type="Production", status="Open", customer=None)
         return P.propose({"order_type": "Made to order", "project": "26PTIN1710", "sales_order": "SO-1", "needed_by": "2026-11-15",
-                          "lines": [{"item": SKF, "qty": 2000}, {"item": GKF, "qty": 300}]})[0]
+                          "lines": [{"item": SKF, "qty": 2000}, {"item": GKF, "qty": 300}], "picks": picks or {}})[0]
 
     def test_who_can_be_borrowed_from(self):
         can, mts, mto = self.P.can_borrow, "Made to stock", "Made to order"
@@ -114,6 +114,15 @@ class TestPropose(unittest.TestCase):
         borrowed = {r["item_code"]: (r["project"], r["qty"]) for r in p["reservations"] if r["kind"] == "borrow"}
         self.assertEqual(borrowed, {YPP: ("25PUR001", 975), YSP: ("25PUR001", 60)})
         self.assertNotIn("GKF-X", [r["batch_no"] for r in p["reservations"]])              # produced for 26PTIN1645: theirs
+
+    def test_lots_chosen_by_hand(self):
+        key = next(l["key"] for l in [lv for lv in self.run_mto()["levels"] if lv["item"] == YPP][0]["lots"])
+        p = self.run_mto({YPP: [{"key": key, "qty": 300}]})
+        lv = {l["item"]: l for l in p["levels"]}
+        borrowed = [r for r in p["reservations"] if r["kind"] == "borrow" and r["item_code"] == YPP]
+        self.assertEqual([r["qty"] for r in borrowed], [300])                        # exactly what was chosen
+        self.assertTrue(lv[YPP]["lots_picked"])
+        self.assertEqual(lv[YPP]["lots"][0]["free"], 975)                              # the picker still lists the whole lot
 
     def test_mto_requests(self):
         p = self.run_mto()

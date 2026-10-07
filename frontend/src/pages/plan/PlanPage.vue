@@ -147,6 +147,9 @@
                   <td class="num" :class="{ muted: !r.coming }" :title="r.coming_from.join('\n')">{{ fmt(r.coming, 2) }}</td>
                   <td class="num" :class="r.reserve ? 'orange' : 'muted'">
                     {{ fmt(r.reserve, 2) }}<div v-if="r.reserve_from.length" class="sub">from {{ r.reserve_from.join(', ') }}</div>
+                    <div v-if="r.lots_picked" class="sub picked">chosen by you</div>
+                    <button v-if="r.lots && r.lots.length && step === 'proposal'" type="button" class="linkish" @click="openPicker(r)">
+                      {{ r.lots_picked ? 'Change lots' : 'Choose lots' }}</button>
                   </td>
                   <td class="num">{{ fmt(r.short, 2) }}</td>
                   <td class="num"><b>{{ fmt(r.request) }}</b></td>
@@ -234,7 +237,39 @@
         <div class="actions"><button class="btn btn-outline" @click="reset">Plan another</button></div>
       </section>
     </main>
+    <div v-if="picker" class="pk-backdrop" @click.self="picker = null">
+    <div class="pk" role="dialog" aria-modal="true" :aria-label="`Choose lots of ${picker.item}`">
+      <div class="pk-head">
+        <div><h3 class="h3">Borrow {{ picker.item }}</h3>
+          <div class="sub">The plan can use up to <b>{{ fmt(picker.room, 2) }} {{ picker.uom }}</b> here (need − own − coming). Tick the lots and set how much from each.</div></div>
+        <button class="icon-btn" aria-label="Close" @click="picker = null"><i class="pi pi-times"></i></button>
+      </div>
+      <div class="pk-body">
+        <table class="data-table compact">
+          <thead><tr><th></th><th>Project</th><th>Batch</th><th>Warehouse</th><th>Roll</th><th class="num">Free</th><th class="num">Take</th></tr></thead>
+          <tbody>
+            <tr v-for="l in picker.lots" :key="l.key">
+              <td><input v-model="l.on" type="checkbox" :aria-label="`Use ${l.batch_no} ${l.roll_no}`" @change="onTick(l)" /></td>
+              <td>{{ l.project }}</td><td class="mono">{{ l.batch_no }}</td><td>{{ l.warehouse }}</td><td>{{ l.roll_no || '—' }}</td>
+              <td class="num">{{ fmt(l.free, 2) }}</td>
+              <td class="num"><input v-model.number="l.qty" type="number" min="0" :max="l.free" step="any" class="form-input pk-qty"
+                                     :disabled="!l.on" :aria-label="`Quantity from ${l.batch_no}`" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pk-foot">
+        <span :class="{ bad: chosenTotal > picker.room + 1e-6 }">Chosen <b>{{ fmt(chosenTotal, 2) }}</b> of {{ fmt(picker.room, 2) }}
+          <template v-if="chosenTotal > picker.room + 1e-6"> — only {{ fmt(picker.room, 2) }} will be reserved</template>
+          <template v-else-if="chosenTotal < picker.room - 1e-6"> — the rest ({{ fmt(picker.room - chosenTotal, 2) }}) will be {{ picker.made ? 'made' : 'bought' }}</template></span>
+        <div class="pk-actions">
+          <button class="btn btn-outline" @click="autoLots">Let the plan choose</button>
+          <button class="btn btn-primary" :disabled="picker.lots.some((l) => l.on && (l.qty < 0 || l.qty > l.free + 1e-6))" @click="useLots">Use these lots</button>
+        </div>
+      </div>
+    </div>
   </div>
+</div>
 </template>
 
 <script setup>
@@ -260,7 +295,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['created'])
 
-const blank = () => ({ order_type: MTO, project: '', sales_order: '', needed_by: '', lines: [{ item: '', qty: null, mode: 'need' }], routes: {}, services: {}, boms: {} })
+const blank = () => ({ order_type: MTO, project: '', sales_order: '', needed_by: '', lines: [{ item: '', qty: null, mode: 'need' }], routes: {}, services: {}, boms: {}, picks: {} })
 const form = reactive(blank())
 const step = ref('start')
 const proposals = ref([])
@@ -313,7 +348,7 @@ function payload() {
     sales_order: form.order_type === MTO ? form.sales_order : null, needed_by: form.needed_by || null,
     lines: form.lines.filter((l) => l.item && l.qty > 0)
       .map((l) => ({ item: l.item, qty: l.qty, mode: form.order_type === MTS ? l.mode : 'need', label: l.label })),
-    routes: form.routes, services: form.services, boms: form.boms,
+    routes: form.routes, services: form.services, boms: form.boms, picks: form.picks,
   }
 }
 async function check() {
@@ -329,6 +364,32 @@ async function check() {
   }
 }
 function setRoute(item, r) { form.routes[item] = r; check() }
+
+// Lot picker: which other projects' free stock to borrow, and how much from each
+const picker = ref(null)
+const chosenTotal = computed(() => (picker.value ? picker.value.lots.reduce((a, l) => a + (l.on ? Number(l.qty) || 0 : 0), 0) : 0))
+function openPicker(r) {
+  const mine = form.picks[r.item]
+  const chosen = mine ? Object.fromEntries(mine.map((p) => [p.key, p.qty])) : r.lots_taken || {}
+  picker.value = {
+    item: r.item, uom: r.uom, made: r.made, room: Math.max(0, (r.reserve || 0) + (r.short || 0)),
+    lots: r.lots.map((l) => ({ ...l, on: chosen[l.key] != null, qty: chosen[l.key] ?? 0 })),
+  }
+}
+function onTick(l) {
+  // ticking a lot fills in what is still missing, up to the lot's free qty
+  if (l.on && !l.qty) l.qty = Math.min(l.free, Math.max(0, picker.value.room - chosenTotal.value))
+}
+function useLots() {
+  form.picks[picker.value.item] = picker.value.lots.filter((l) => l.on && l.qty > 0).map((l) => ({ key: l.key, qty: l.qty }))
+  picker.value = null
+  check()
+}
+function autoLots() {
+  delete form.picks[picker.value.item]
+  picker.value = null
+  check()
+}
 function setService(item, s) { form.services[item] = s; check() }
 function setBom(item, b) { form.boms[item] = b; check() }
 function groupReservations(list) {
@@ -415,6 +476,18 @@ onMounted(() => {
 .h2 { margin: 0; font-size: 18px; font-weight: 650; display: flex; gap: 10px; align-items: center; }
 .rules { display: flex; gap: 6px; flex-wrap: wrap; }
 .badge-muted { background: var(--slate-100); color: var(--slate-500); }
+.linkish { border: 0; background: none; padding: 0; margin-top: 2px; color: var(--primary); text-decoration: underline; cursor: pointer; font-size: 12px; }
+.picked { color: #1d4ed8; }
+.pk-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+.pk { background: #fff; border-radius: 12px; width: min(920px, 100%); max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
+.pk-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--slate-200); }
+.h3 { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+.pk-body { overflow: auto; padding: 0 6px; }
+.pk-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 18px; border-top: 1px solid var(--slate-200); font-size: 13px; }
+.pk-actions { display: flex; gap: 8px; }
+.pk-qty { width: 110px; text-align: right; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.bad { color: #b91c1c; }
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .stat.warn { background: #fff7ed; border-color: #f3c79a; }
 .stat.dark { background: var(--primary); color: #fff; }

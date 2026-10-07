@@ -48,7 +48,9 @@ def schedule(levels, deliver_on, final_label="Ready to deliver"):
     # What still has to arrive: new requests plus what this project already has coming (its own
     # open requests and orders) — yarn ordered but not yet received is still an activity.
     def todo(lv):
-        return float(lv.get("request") or 0) + float(lv.get("coming") or 0)
+        # all of the project's own open requests and orders, even beyond what the plan counted
+        coming = max(float(lv.get("coming") or 0), float(lv.get("coming_all") or 0))
+        return float(lv.get("request") or 0) + coming
     work = [lv for lv in levels if todo(lv) > 0]
     by_depth = {}
     for lv in work:

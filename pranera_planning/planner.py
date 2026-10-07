@@ -392,6 +392,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
 
         levels.append({**{k: r[k] for k in ("item", "need", "own", "coming", "reserve", "short", "request", "made", "depth")},
                        "how": [t for _q, t in r["how"]], "item_name": it.get("item_name"), "uom": it.get("stock_uom"),
+                       "coming_all": flt((data.get(code) or {}).get("coming")),
                        "stage": stage or ("Bought" if not r["made"] else ""), "route": route, "stage_days": days_route,
                        "service": service if r["made"] else None, "service_options": options if r["made"] else [],
                        "bom": boms.get(code) if r["made"] else None, "bom_options": bom_options.get(code, []) if r["made"] else [],

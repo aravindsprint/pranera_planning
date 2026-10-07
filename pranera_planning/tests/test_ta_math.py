@@ -40,6 +40,12 @@ class TestComing(unittest.TestCase):
         self.assertEqual((acts[0]["activity"], acts[0]["qty"], acts[0]["planned_start"]), ("Buy", 2000.0, "2026-10-10"))
 
 
+    def test_ordered_beyond_what_the_plan_counted_is_still_tracked(self):
+        # free stock covers the level, so the plan counts nothing coming — but 2,000 is on order
+        lv = [{"item": "YARN", "request": 0, "coming": 0, "coming_all": 2000, "made": False, "depth": 0, "lead_days": 10}]
+        self.assertEqual(T.schedule(lv, "2026-11-24")[0]["qty"], 2000.0)
+
+
 class TestMerge(unittest.TestCase):
     def test_a_started_activity_no_longer_needed_stays_as_history(self):
         old = T.schedule([{"item": "YARN", "request": 2000, "made": False, "depth": 0, "lead_days": 45}], "2026-11-24")

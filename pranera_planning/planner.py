@@ -122,6 +122,17 @@ def counts_as_own(lot_project, project, order_type, kinds):
     return (bool(project) and same_project(lot_project, project)) or kinds.get(lot_project) == MTS
 
 
+def can_borrow(lot, project, order_type, kinds):
+    """Whether another project's free stock may be borrowed (reserved) by this plan: purchased
+    (not produced) stock of a made-to-stock project. A project with no Order type counts as made
+    to order — its stock belongs to its own order — so it is never borrowed from."""
+    if not lot.get("project") or lot.get("produced"):
+        return False
+    if (kinds.get(lot["project"]) or MTO) != MTS:
+        return False
+    return not counts_as_own(lot["project"], project, order_type, kinds)
+
+
 def free_lots(items):
     """{item: [{"batch_no", "warehouse", "roll_no", "qty", "project", "produced"}]}, oldest batch
     first. Free = in stores minus what active reservations hold there. Roll items list free
@@ -318,7 +329,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         return counts_as_own(lot["project"], project, order_type, kinds)
 
     def is_borrowable(lot):
-        return lot["project"] and not lot["produced"] and kinds.get(lot["project"]) != MTO and not is_own(lot)
+        return can_borrow(lot, project, order_type, kinds)
 
     groups = {}
     for code, it in info.items():

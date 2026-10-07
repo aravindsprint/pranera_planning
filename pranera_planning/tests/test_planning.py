@@ -62,7 +62,7 @@ class TestPropose(unittest.TestCase):
         P.bom_tree = bom_tree
         P.last_service = lambda items: {SKF: "DRYER"}                      # this fabric last went to the dryer
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
-            [("26PTIN1710", "Made to order"), ("25PUR001", ""), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
+            [("26PTIN1710", "Made to order"), ("25PUR001", "Made to stock"), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
 
     def run_mto(self):
         P = self.P
@@ -77,6 +77,16 @@ class TestPropose(unittest.TestCase):
                                                                          project_type="Production", status="Open", customer=None)
         return P.propose({"order_type": "Made to order", "project": "26PTIN1710", "sales_order": "SO-1", "needed_by": "2026-11-15",
                           "lines": [{"item": SKF, "qty": 2000}, {"item": GKF, "qty": 300}]})[0]
+
+    def test_who_can_be_borrowed_from(self):
+        can, mts, mto = self.P.can_borrow, "Made to stock", "Made to order"
+        kinds = {"25PUR001": mts, "PTIN1710": mto}               # PROJ-0002: no Order type
+        lot = lambda p, produced=False: {"project": p, "produced": produced}
+        self.assertTrue(can(lot("25PUR001"), "SAL-ORD-1", mto, kinds))
+        self.assertFalse(can(lot("PROJ-0002"), "SAL-ORD-1", mto, kinds))     # empty = made to order
+        self.assertFalse(can(lot("PTIN1710"), "SAL-ORD-1", mto, kinds))
+        self.assertFalse(can(lot("25PUR001", produced=True), "SAL-ORD-1", mto, kinds))
+        self.assertFalse(can(lot(None), "SAL-ORD-1", mto, kinds))
 
     def test_what_counts_as_own_stock(self):
         own, kinds = self.P.counts_as_own, {"25PUR001": "Made to stock", "PTIN1710": "Made to order"}

@@ -42,6 +42,7 @@ doc_events = {
     },
     "Work Order": {
         "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
+        "validate": "pranera_planning.ta_checks.work_order",
     },
     "Subcontracting Order": {
         "on_submit": "pranera_planning.reservation.clear_warehouse_cache",
@@ -64,6 +65,9 @@ doc_events = {
     # Lead time check: a line's Required By can't be earlier than the order date + the
     # supplier's lead days (Re-order Settings › Supplier lead days). Also when Update Items
     # changes dates on a submitted order.
+    # Time and Action (Work Order: see above): Job Cards on the booked machine and not started
+    # before their input is transferred.
+    "Job Card": {"validate": "pranera_planning.ta_checks.job_card"},
     "Purchase Order": {
         "validate": "pranera_planning.purchase_order.check_lead_time",
         "before_submit": "pranera_planning.purchase_order.check_lead_time",
@@ -101,4 +105,5 @@ after_install = [
     "pranera_planning.patches.add_supplier_lead_days.execute",
     "pranera_planning.patches.add_stock_plan_flag.execute",
     "pranera_planning.patches.add_workstation_fields.execute",
+    "pranera_planning.patches.add_ta_check_fields.execute",
 ]

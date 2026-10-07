@@ -423,3 +423,20 @@ its own before anything is borrowed.
 Bought items are due when the first stage after them starts (worked back from Needed by through
 the stage days, the same schedule as the T&A plan): the plan shows "due …" next to the supplier's
 arrival and warns when an order placed today would arrive after it.
+
+## Time and Action — step 3: checks and reports
+
+Checks (`ta_checks.py`; Re-order Settings › Workstation check: Block / Warn / Off), overridable by
+the Stock Reservation Settings roles with *T&A override reason* (patch `add_ta_check_fields`):
+- **Work Order** (validate): the machine booked for its item on the project's T&A plan is copied
+  onto operations with no workstation (the only operation, or those named like the stage); on
+  submit, an operation of that stage on another machine is refused.
+- **Job Card** (validate): on a machine other than the booked one — refused; started (a time log)
+  while its Work Order has no material transferred and doesn't skip the transfer — refused.
+
+Reports (`ta_reports.py`, `api.ta_reports`, page `/planning-app/ta-reports`):
+- **Dashboard**: open projects' activities late / due in 7 days / in progress, by stage and by
+  customer, and the list to act on.
+- **Workstation utilisation**: booked kg against capacity per machine and week.
+- **Delays**: for activities finished in a period, planned vs actual days per stage, average
+  delay, on-time %, plus late open ones, with the remarks as reasons and slip against the first plan.

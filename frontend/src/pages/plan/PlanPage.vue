@@ -181,6 +181,7 @@
                       <div class="sub">{{ r.request ? `Purchase request · ${fmt(r.request)} ${r.uom}` : 'nothing to buy' }}</div>
                       <div v-if="r.request && r.arrives_by" class="sub" :title="r.lead_source">
                         {{ r.supplier || 'Usual supplier' }} · {{ fmt(r.lead_days) }} days → arrives ~{{ day(r.arrives_by) }}
+                        <span v-if="r.needed_on" :class="{ late: r.arrives_by > r.needed_on }"> · due {{ day(r.needed_on) }}</span>
                       </div>
                     </template>
                   </td>
@@ -478,6 +479,7 @@ onMounted(() => {
 .badge-muted { background: var(--slate-100); color: var(--slate-500); }
 .linkish { border: 0; background: none; padding: 0; margin-top: 2px; color: var(--primary); text-decoration: underline; cursor: pointer; font-size: 12px; }
 .picked { color: #1d4ed8; }
+.late { color: #b91c1c; font-weight: 600; }
 .pk-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
 .pk { background: #fff; border-radius: 12px; width: min(920px, 100%); max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
 .pk-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--slate-200); }

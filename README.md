@@ -419,3 +419,7 @@ is made or bought. *Let the plan choose* goes back to automatic. Create re-check
 picks and reserves exactly them; a chosen lot no longer free is left out with a warning.
 Reserving by hand on Stock & reservations still works too: stock held for the project counts as
 its own before anything is borrowed.
+
+Bought items are due when the first stage after them starts (worked back from Needed by through
+the stage days, the same schedule as the T&A plan): the plan shows "due …" next to the supplier's
+arrival and warns when an order placed today would arrive after it.

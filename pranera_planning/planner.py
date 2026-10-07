@@ -429,15 +429,26 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     # bought levels: when the usual supplier would deliver an order placed today
     arrivals = bought_arrivals([l["item"] for l in levels if not l["made"]], info, gbounds, cfg)
     for l in levels:
+        if not l["made"] and arrivals.get(l["item"]):
+            l.update(arrivals[l["item"]])
+    # When each level is needed: worked back from Needed by through the stages above it (the
+    # same schedule as the Time and Action plan), so bought yarn is due when Knitting starts,
+    # not on the delivery date.
+    from pranera_planning.ta_math import STAGE, BOUGHT, schedule
+    need_on = {a["item_code"]: a["planned_end"] for a in schedule(levels, needed_by) if a["kind"] in (STAGE, BOUGHT)}
+    for l in levels:
+        l["needed_on"] = need_on.get(l["item"])
         a = arrivals.get(l["item"])
         if l["made"] or not a:
             continue
-        l.update(a)
-        if l["request"] > EPS and a["arrives_by"] and getdate(a["arrives_by"]) > getdate(needed_by):
+        due = l["needed_on"] or needed_by
+        if l["request"] > EPS and a["arrives_by"] and getdate(a["arrives_by"]) > getdate(due):
             who = a["supplier"] or _("its supplier")
-            warnings.append(_("{0}: needed by {1}, but {2} usually takes {3} days, so an order placed today arrives "
-                              "around {4}. Move Needed by, or buy from a faster supplier.").format(
-                l["item"], needed_by, who, _days(a["lead_days"]), a["arrives_by"]))
+            warnings.append(_("{0}: needed in stores by {1} for the stages after it to finish by {2}, but {3} usually takes "
+                              "{4} days, so an order placed today arrives around {5} ({6} days late). Move Needed by, "
+                              "shorten a stage, or buy from a faster supplier.").format(
+                l["item"], due, needed_by, who, _days(a["lead_days"]), a["arrives_by"],
+                (getdate(a["arrives_by"]) - getdate(due)).days))
 
     return {"project": proj, "order_type": order_type, "rules": rules, "needed_by": needed_by,
             "sales_order": payload.get("sales_order") if order_type == MTO else None,

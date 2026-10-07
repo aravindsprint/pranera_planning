@@ -15,3 +15,4 @@ pranera_planning.patches.add_supplier_lead_days
 pranera_planning.patches.split_stage_days_by_route
 pranera_planning.patches.add_stock_plan_flag
 pranera_planning.patches.saved_make_lines_to_top_up
+pranera_planning.patches.add_workstation_fields

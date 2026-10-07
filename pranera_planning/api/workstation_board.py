@@ -1,0 +1,135 @@
+"""API for the planning app's Workstation Board: machines × days with their load, the in-house
+activities waiting for a machine, and booking an activity on a machine.
+
+Booking is blocked (Re-order Settings' choice for T&A restrictions) when the machine doesn't
+fit the item (stage, dia, gauge) or would go over its capacity on any day, unless the user has an
+override role (Stock Reservation Settings, as for the other checks) and gives a reason, which is
+kept in the activity's remarks and as a comment on the T&A plan."""
+from datetime import timedelta
+
+import frappe
+from frappe import _
+from frappe.utils import flt, getdate, today
+
+from pranera_planning import workstation as W
+from pranera_planning import ws_math
+
+ACT, PLAN = W.ACT, W.PLAN
+
+
+def _stages():
+    s = frappe.get_cached_doc("Re-order Settings")
+    return [r.stage for r in (s.get("stage_leads") or []) if r.stage]
+
+
+@frappe.whitelist()
+def get_board(stage=None, start=None, days=28):
+    frappe.has_permission(PLAN, "read", throw=True)
+    stages = _stages()
+    stage = stage or (stages[0] if stages else None)
+    frm = getdate(start or today())
+    days = max(7, min(int(days or 28), 92))
+    to = frm + timedelta(days=days)
+    wss = W.workstations(stage, frm=frm, to=to)
+    books = W.bookings(frm, to, list(wss)) if wss else []
+    load = ws_math.load(books, wss, frm, to)
+    dates = [frm + timedelta(days=i) for i in range(days)]
+    machines = []
+    for name, ws in wss.items():
+        cells = []
+        for d in dates:
+            cap = ws_math.capacity_on(ws, d)
+            q = load.get((name, d), 0.0)
+            cells.append({"date": str(d), "booked": round(q, 1), "capacity": round(cap, 1),
+                          "pct": round(q / cap * 100) if cap > 0 else (None if q <= 0 else 999)})
+        machines.append({**{k: v for k, v in ws.items() if k != "holidays"},
+                         "missing": [x for x, ok in (("Kg per hour", ws["kg_per_hour"] > 0), ("Working hours", ws["hours_set"])) if not ok],
+                         "cells": cells, "bookings": [_row(b) for b in books if b.workstation == name]})
+    wait = W.waiting(stage)
+    fit = W.item_fit({a["item_code"] for a in wait})
+    for a in wait:
+        a.update(fit.get(a["item_code"]) or {})
+        a["candidates"] = _candidates(a, wss)
+    return {"stages": stages, "stage": stage, "start": str(frm), "days": days, "dates": [str(d) for d in dates],
+            "machines": machines, "waiting": wait, "can_override": _can_override()}
+
+
+def _row(b):
+    return {"activity": b.name, "project": b.project, "item_code": b.item_code, "qty": flt(b.qty), "uom": b.uom,
+            "planned_start": str(b.planned_start), "planned_end": str(b.planned_end), "remarks": b.remarks}
+
+
+def _candidates(a, wss):
+    """For a waiting activity: each machine, whether it fits, and its earliest free slot."""
+    out = []
+    want = {"stage": a.get("stage"), "dia": a.get("dia"), "gauge": a.get("gauge")}
+    not_before = max(getdate(a["planned_start"]), getdate(today()))
+    for name, ws in wss.items():
+        why = ws_math.fits(want, ws)
+        slot = None
+        if not why and ws["kg_per_hour"] > 0:
+            booked = W.booked_by_day(name, ws, not_before, not_before + timedelta(days=150))
+            got = ws_math.earliest_slot(ws, booked, a["qty"], not_before)
+            slot = {"start": str(got[0]), "end": str(got[1])} if got else None
+        out.append({"workstation": name, "fits": not why, "why": why, "slot": slot,
+                    "late": bool(slot and getdate(slot["end"]) > getdate(a["planned_end"]))})
+    out.sort(key=lambda c: (not c["fits"], c["slot"] is None, c["slot"]["start"] if c["slot"] else ""))
+    return out
+
+
+def _can_override():
+    from pranera_planning.reservation import mr_check_settings
+    return bool(mr_check_settings()["roles"] & set(frappe.get_roles()))
+
+
+@frappe.whitelist(methods=["POST"])
+def allocate(activity, workstation, start=None, override_reason=None):
+    """Book a T&A activity on a workstation from `start` (default: its planned start). The end
+    follows from the machine's capacity. Blocked when the machine doesn't fit or would go over
+    capacity, unless overridden with a reason by an allowed role."""
+    row = frappe.get_doc(ACT, activity)
+    plan = frappe.get_doc(PLAN, row.parent)
+    frappe.has_permission(PLAN, "write", plan, throw=True)
+    if row.kind != "Stage":
+        frappe.throw(_("Only a production stage can be booked on a workstation."))
+    ws = W.workstations(names=[workstation]).get(workstation)
+    if not ws:
+        frappe.throw(_("Workstation {0} not found or disabled.").format(workstation))
+    start = getdate(start or row.planned_start or today())
+    got = ws_math.duration_for(ws, row.qty, start)
+    if not got:
+        frappe.throw(_("{0} has no Kg per hour set, so its capacity is unknown: set it on the Workstation.").format(workstation))
+    end, n_days = got
+    item = {"stage": row.stage, **(W.item_fit([row.item_code]).get(row.item_code) or {})}
+    problems = [_("{0} can't make {1}: {2}.").format(workstation, row.item_code, ", ".join(ws_math.fits(item, ws)))] \
+        if ws_math.fits(item, ws) else []
+    booked = W.booked_by_day(workstation, ws, start, end + timedelta(days=1), exclude=row.name)
+    over = ws_math.over_days(ws, booked, row.qty, start, end)
+    if over:
+        d, tot, cap = over[0]
+        problems.append(_("{0} would be over capacity on {1} day(s), first {2}: {3} kg booked against {4} kg a day.")
+                        .format(workstation, len(over), frappe.utils.formatdate(d), tot, cap))
+    reason = (override_reason or "").strip()
+    if problems:
+        if not (_can_override() and reason):
+            frappe.throw("<br>".join(problems) + ("<br><br>" + _("To book it anyway, give an override reason.")
+                                                  if _can_override() else ""), title=_("Can't book this machine"))
+    values = {"workstation": workstation, "planned_start": start, "planned_end": end, "duration_days": (end - start).days}
+    if reason and problems:
+        values["remarks"] = ((row.remarks or "") + f"\nOverride ({frappe.session.user}): {reason}").strip()
+        plan.add_comment("Comment", _("{0} booked on {1} with an override: {2} — {3}").format(
+            row.activity, workstation, reason, " ".join(problems)))
+    frappe.db.set_value(ACT, row.name, values)              # a child row: written directly
+    plan.db_set("modified", frappe.utils.now(), update_modified=False)
+    row.update(values)
+    late = row.planned_end and plan.deliver_on and getdate(row.planned_end) > getdate(plan.deliver_on)
+    return {"activity": row.name, "start": str(start), "end": str(end), "working_days": n_days, "after_delivery": bool(late)}
+
+
+@frappe.whitelist(methods=["POST"])
+def release(activity):
+    """Take an activity off its workstation (its dates stay as planned)."""
+    row = frappe.get_doc(ACT, activity)
+    frappe.has_permission(PLAN, "write", frappe.get_doc(PLAN, row.parent), throw=True)
+    frappe.db.set_value(ACT, row.name, "workstation", None)
+    return {"activity": row.name}

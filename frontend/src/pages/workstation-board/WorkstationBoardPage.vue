@@ -1,0 +1,229 @@
+<template>
+  <div class="page">
+    <AppHeader subtitle="Machines × days: what is booked, what is free, and what still needs a machine" />
+
+    <main class="page-content">
+      <div v-if="error" class="alert alert-error pre" role="alert">{{ error }}</div>
+      <div v-if="note" class="alert alert-success" role="status">{{ note }}</div>
+
+      <section class="card controls">
+        <div class="field"><label class="form-label" for="wb-stage">Stage</label>
+          <select id="wb-stage" v-model="stage" class="form-input" @change="load">
+            <option v-for="s in board?.stages || []" :key="s" :value="s">{{ s }}</option></select></div>
+        <div class="field"><label class="form-label" for="wb-start">From</label>
+          <input id="wb-start" v-model="start" type="date" class="form-input" @change="load" /></div>
+        <div class="field"><label class="form-label" for="wb-days">Days</label>
+          <select id="wb-days" v-model.number="days" class="form-input" @change="load">
+            <option :value="14">2 weeks</option><option :value="28">4 weeks</option><option :value="56">8 weeks</option></select></div>
+        <button class="btn btn-outline" :disabled="loading" @click="load">{{ loading ? 'Loading…' : 'Refresh' }}</button>
+        <span class="legend"><i class="sw l0"></i>free <i class="sw l1"></i>&lt; 80% <i class="sw l2"></i>80–100% <i class="sw l3"></i>over <i class="sw off"></i>holiday</span>
+      </section>
+
+      <div v-if="loading && !board" class="loading-center"><div class="spinner"></div></div>
+
+      <template v-else-if="board">
+        <!-- the board -->
+        <section class="card flush">
+          <div class="card__head"><h2 class="h2">{{ board.stage }} machines</h2>
+            <span class="sub">{{ board.machines.length }} machine{{ board.machines.length === 1 ? '' : 's' }} · click a machine for its bookings</span></div>
+          <p v-if="!board.machines.length" class="empty">No workstation has Planning stage “{{ board.stage }}”. Set it on the Workstation form.</p>
+          <div v-else class="grid-wrap">
+            <table class="grid">
+              <thead><tr><th class="m">Machine</th>
+                <th v-for="d in board.dates" :key="d" class="c" :class="{ wk: isWeekStart(d) }">{{ dd(d) }}<br /><span class="sub">{{ wd(d) }}</span></th></tr></thead>
+              <tbody>
+                <template v-for="m in board.machines" :key="m.name">
+                  <tr class="mrow" @click="open = open === m.name ? '' : m.name">
+                    <th class="m">
+                      <div class="item">{{ m.label }}</div>
+                      <div class="sub">{{ fmt(m.per_day) }} kg/day<template v-if="m.dia"> · {{ m.dia }}″ {{ m.gauge }}G</template></div>
+                      <div v-if="m.missing.length" class="miss">set: {{ m.missing.join(', ') }}</div>
+                    </th>
+                    <td v-for="c in m.cells" :key="c.date" class="c" :class="[cls(c), { wk: isWeekStart(c.date) }]"
+                        :title="c.capacity ? `${dd(c.date)}: ${fmt(c.booked)} of ${fmt(c.capacity)} kg` : `${dd(c.date)}: holiday`">
+                      {{ c.pct == null ? '' : c.pct >= 999 ? '!' : c.pct ? `${c.pct}` : '' }}</td>
+                  </tr>
+                  <tr v-if="open === m.name" class="detail"><td :colspan="board.dates.length + 1">
+                    <p v-if="!m.bookings.length" class="sub">Nothing booked in these days.</p>
+                    <table v-else class="data-table compact">
+                      <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>From → to</th><th>Remarks</th><th></th></tr></thead>
+                      <tbody><tr v-for="b in m.bookings" :key="b.activity">
+                        <td><a :href="`${APP_BASE}/project-planning?project=${encodeURIComponent(b.project)}&tab=ta`">{{ b.project }}</a></td>
+                        <td>{{ b.item_code }}</td><td class="num">{{ fmt(b.qty) }} {{ b.uom }}</td>
+                        <td>{{ dd(b.planned_start) }} → {{ dd(b.planned_end) }}</td><td class="sub">{{ b.remarks }}</td>
+                        <td class="act"><button class="btn btn-outline sm" :disabled="busy" @click.stop="release(b)">Release</button></td>
+                      </tr></tbody>
+                    </table>
+                  </td></tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- waiting for a machine -->
+        <section class="card flush">
+          <div class="card__head"><h2 class="h2">Waiting for a machine</h2><span class="sub">{{ board.waiting.length }} in-house {{ board.stage }} activit{{ board.waiting.length === 1 ? 'y' : 'ies' }}</span></div>
+          <p v-if="!board.waiting.length" class="empty">Every in-house {{ board.stage }} activity has a machine.</p>
+          <div v-else class="scroll">
+            <table class="data-table">
+              <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>Planned</th><th>Machine</th><th>Start</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="a in board.waiting" :key="a.name">
+                  <td><a :href="`${APP_BASE}/project-planning?project=${encodeURIComponent(a.project)}&tab=ta`">{{ a.project }}</a></td>
+                  <td><div class="item">{{ a.item_code }}</div><div class="sub"><template v-if="a.dia">{{ a.dia }}″ {{ a.gauge }}G</template></div></td>
+                  <td class="num">{{ fmt(a.qty - a.done_qty) }} <span class="sub">{{ a.uom }}</span></td>
+                  <td>{{ dd(a.planned_start) }} → {{ dd(a.planned_end) }}</td>
+                  <td>
+                    <select v-model="pick[a.name].ws" class="form-input" :aria-label="`Machine for ${a.item_code}`" @change="pickSlot(a)">
+                      <option value="">Choose…</option>
+                      <option v-for="c in a.candidates" :key="c.workstation" :value="c.workstation" :disabled="!c.fits && !board.can_override">
+                        {{ c.workstation }} — {{ c.fits ? (c.slot ? `free ${dd(c.slot.start)} → ${dd(c.slot.end)}${c.late ? ' (after planned end)' : ''}` : 'no free slot / no capacity') : `doesn't fit: ${c.why.join(', ')}` }}
+                      </option>
+                    </select>
+                  </td>
+                  <td><input v-model="pick[a.name].start" type="date" class="form-input d" :aria-label="`Start for ${a.item_code}`" /></td>
+                  <td class="act">
+                    <button class="btn btn-primary sm" :disabled="busy || !pick[a.name].ws" @click="book(a)">Book</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="needReason" class="override">
+            <label class="form-label" for="wb-reason">Override reason for {{ needReason.item_code }} on {{ pick[needReason.name].ws }}</label>
+            <div class="override__row">
+              <input id="wb-reason" v-model.trim="reason" class="form-input" placeholder="e.g. second shift approved for this week" />
+              <button class="btn btn-primary" :disabled="busy || !reason" @click="book(needReason, true)">Book with override</button>
+              <button class="btn btn-outline" @click="needReason = null">Cancel</button>
+            </div>
+          </div>
+          <div class="foot">Capacity a day = Kg per hour × Working Hours × Production Capacity, from each Workstation; holidays from its Holiday List.
+            The booking's end follows from that capacity. A machine that doesn't fit (stage, dia, gauge) or would go over capacity is refused
+            unless an override role gives a reason.</div>
+        </section>
+      </template>
+    </main>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import AppHeader from '@/components/AppHeader.vue'
+import { callMessage } from '@/api/frappe'
+import { APP_BASE } from '@/config/app'
+
+const board = ref(null)
+const stage = ref('')
+const start = ref(new Date().toISOString().slice(0, 10))
+const days = ref(28)
+const loading = ref(false)
+const busy = ref(false)
+const error = ref('')
+const note = ref('')
+const open = ref('')
+const pick = reactive({})
+const needReason = ref(null)
+const reason = ref('')
+
+const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
+const dt = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`)
+const dd = (d) => (d ? dt(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—')
+const wd = (d) => dt(d).toLocaleDateString(undefined, { weekday: 'narrow' })
+const isWeekStart = (d) => dt(d).getDay() === 1
+const cls = (c) => (c.capacity <= 0 ? (c.booked > 0 ? 'l3' : 'off') : c.pct > 100 ? 'l3' : c.pct >= 80 ? 'l2' : c.pct > 0 ? 'l1' : 'l0')
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    board.value = await callMessage('pranera_planning.api.workstation_board.get_board', { stage: stage.value || undefined, start: start.value, days: days.value })
+    stage.value = board.value.stage || ''
+    for (const a of board.value.waiting) {
+      const best = a.candidates.find((c) => c.fits && c.slot)
+      pick[a.name] = { ws: best ? best.workstation : '', start: best ? best.slot.start : a.planned_start }
+    }
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+function pickSlot(a) {
+  const c = a.candidates.find((x) => x.workstation === pick[a.name].ws)
+  if (c?.slot) pick[a.name].start = c.slot.start
+}
+async function book(a, withReason = false) {
+  busy.value = true
+  error.value = ''
+  note.value = ''
+  try {
+    const r = await callMessage('pranera_planning.api.workstation_board.allocate', {
+      activity: a.name, workstation: pick[a.name].ws, start: pick[a.name].start, override_reason: withReason ? reason.value : undefined,
+    })
+    note.value = `${a.item_code} booked on ${pick[a.name].ws}: ${dd(r.start)} → ${dd(r.end)} (${r.working_days} working day${r.working_days === 1 ? '' : 's'})${r.after_delivery ? ' — ends after the delivery date' : ''}.`
+    needReason.value = null
+    reason.value = ''
+    await load()
+  } catch (e) {
+    error.value = String(e.message || '').replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '')
+    if (board.value?.can_override && !withReason) needReason.value = a
+  } finally {
+    busy.value = false
+  }
+}
+async function release(b) {
+  busy.value = true
+  error.value = ''
+  try {
+    await callMessage('pranera_planning.api.workstation_board.release', { activity: b.activity })
+    note.value = `${b.item_code} released from its machine.`
+    await load()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    busy.value = false
+  }
+}
+onMounted(load)
+</script>
+
+<style scoped>
+.controls { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
+.legend { margin-left: auto; font-size: 12px; color: var(--slate-500); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--slate-200); vertical-align: middle; }
+.card.flush { padding: 0; margin-bottom: 16px; overflow: hidden; }
+.card__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--slate-200); }
+.h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.sub { font-size: 12px; color: var(--slate-500); font-weight: 400; }
+.item { font-weight: 600; }
+.empty { padding: 16px 18px; margin: 0; font-size: 14px; color: var(--slate-500); }
+.grid-wrap, .scroll { overflow-x: auto; }
+.grid { border-collapse: collapse; width: 100%; font-size: 12px; }
+.grid th, .grid td { border-bottom: 1px solid var(--slate-100); }
+.grid .m { position: sticky; left: 0; background: #fff; text-align: left; padding: 8px 12px; min-width: 190px; z-index: 1; font-weight: 400; }
+.grid .c { text-align: center; min-width: 34px; padding: 6px 2px; font-variant-numeric: tabular-nums; }
+.grid thead .c { font-weight: 600; color: var(--slate-500); }
+.grid .wk { border-left: 1px solid var(--slate-200); }
+.mrow { cursor: pointer; }
+.mrow:hover .m { background: var(--slate-50, #f8fafc); }
+.l0, .sw.l0 { background: #fff; }
+.l1, .sw.l1 { background: #dcfce7; color: #166534; }
+.l2, .sw.l2 { background: #fef3c7; color: #92400e; }
+.l3, .sw.l3 { background: #fee2e2; color: #b91c1c; font-weight: 700; }
+.off, .sw.off { background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 4px, #e2e8f0 4px, #e2e8f0 8px); }
+.miss { font-size: 11px; color: #b45309; }
+.detail td { background: var(--slate-50, #f8fafc); padding: 10px 14px; }
+.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.act { text-align: right; white-space: nowrap; }
+.btn.sm { padding: 4px 10px; font-size: 13px; }
+.form-input.d { width: 150px; }
+.data-table.compact td, .data-table.compact th { padding-top: 6px; padding-bottom: 6px; }
+.override { padding: 12px 18px; border-top: 1px solid var(--slate-200); background: #fff7ed; }
+.override__row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.override__row .form-input { flex: 1; min-width: 260px; }
+.foot { padding: 10px 18px; background: var(--slate-50, #f8fafc); border-top: 1px solid var(--slate-200); font-size: 12px; color: var(--slate-500); }
+.pre { white-space: pre-line; }
+.alert-success { background: #ecfdf3; border: 1px solid #bbe5c8; color: #166534; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+</style>

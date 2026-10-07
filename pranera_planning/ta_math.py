@@ -88,19 +88,24 @@ def schedule(levels, deliver_on, final_label="Ready to deliver"):
 
 
 def merge(old, new):
-    """Rebuild a T&A plan without losing what happened. Activities already started keep their
-    planned dates (only the quantity follows the new plan); manual milestones stay; the first
+    """Rebuild a T&A plan without losing what happened. Activities already started, or booked on
+    a workstation, keep their planned dates and machine (only the quantity follows the new
+    plan); manual milestones stay; the first
     planned end ever given to an activity stays as its baseline, to show how far it slipped."""
     started = {(a.get("kind"), a.get("item_code")): a for a in old
                if a.get("source") == "plan" and a.get("kind") != MILESTONE and a.get("actual_start")}
+    # booked on a workstation: the booking is a commitment, so its dates and machine stay too
+    booked = {(a.get("kind"), a.get("item_code")): a for a in old
+              if a.get("source") == "plan" and a.get("kind") != MILESTONE and a.get("workstation")
+              and not a.get("actual_start")}
     baseline = {(a.get("kind"), a.get("item_code"), a.get("activity")): a.get("baseline_end") or a.get("planned_end")
                 for a in old if a.get("source") == "plan"}
     out, matched = [], set()
     for a in new:
         matched.add((a["kind"], a["item_code"]))
         key = (a["kind"], a["item_code"])
-        if key in started and a["kind"] != MILESTONE:
-            keep = started[key]
+        keep = started.get(key) or booked.get(key)
+        if keep and a["kind"] != MILESTONE:
             a = {**a, "planned_start": keep.get("planned_start"), "planned_end": keep.get("planned_end"),
                  "duration_days": keep.get("duration_days"), "workstation": keep.get("workstation"),
                  "remarks": keep.get("remarks")}

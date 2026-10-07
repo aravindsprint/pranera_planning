@@ -68,6 +68,15 @@ export const pages = [
   },
 
   {
+    path: 'workstation-board',
+    title: 'Workstation Board',
+    icon: 'pi pi-th-large',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/workstation-board/WorkstationBoardPage.vue'),
+  },
+
+  {
     path: 'supplier-lead-days',
     title: 'Supplier Lead Days',
     icon: 'pi pi-truck',

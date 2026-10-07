@@ -70,7 +70,9 @@
                   <input v-if="r.source !== 'plan'" v-model.trim="r.activity" class="form-input" :aria-label="`Milestone ${r.seq || ''} name`" />
                   <template v-else><div class="item">{{ r.activity }}</div><div class="sub">{{ r.item_code }}</div></template>
                 </td>
-                <td class="sub">{{ by(r) }}</td>
+                <td class="sub">{{ by(r) }}
+                  <a v-if="r.kind === 'Stage' && r.route === 'In-house' && !r.workstation && r.status !== 'Done'"
+                     class="book" :href="`${APP_BASE}/workstation-board`">Book a machine</a></td>
                 <td class="num">
                   <template v-if="r.kind !== 'Milestone'">{{ fmt(r.done_qty) }} / {{ fmt(r.qty) }} <span class="sub">{{ r.uom }}</span></template>
                 </td>
@@ -105,6 +107,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { callMessage } from '@/api/frappe'
+import { APP_BASE } from '@/config/app'
 
 const props = defineProps({ project: { type: String, required: true } })
 const data = ref(null)
@@ -205,6 +208,7 @@ watch(() => props.project, (p) => { data.value = null; if (p) load() }, { immedi
 .act { width: 40px; text-align: right; }
 .icon-btn { border: 0; background: transparent; cursor: pointer; color: var(--slate-500); padding: 4px; }
 .scroll { overflow-x: auto; }
+.book { display: block; font-size: 12px; }
 .form-input.d { width: 150px; }
 tr.late td { background: #fff7f7; }
 .good { color: #166534; font-weight: 600; }

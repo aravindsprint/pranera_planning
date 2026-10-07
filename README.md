@@ -392,3 +392,18 @@ and the editable activity list.
 
 Next steps: workstations (stage, capacity, dia/gauge on the Workstation) and allocation;
 then the blocking checks and the cross-order reports.
+
+## Time and Action — step 2: workstations
+
+Capacity comes from the **Workstation** doctype: its Working Hours (hours a day; none set =
+24 h), Production Capacity (jobs in parallel) and Holiday List, plus custom fields *Planning
+stage*, *Kg per hour*, *Dia* and *Gauge* (patch `add_workstation_fields`; the Item gets *Knitting
+dia* and *gauge*). Capacity a day = Kg per hour × hours × jobs; 0 on holidays (`ws_math.py`).
+
+The **Workstation Board** (`/planning-app/workstation-board`, `api.workstation_board`) shows a
+stage's machines × days with the load (bookings spread evenly over their working days), and the
+in-house T&A activities still waiting for a machine, each with every machine's fit and earliest
+free slot. Booking sets the activity's machine, start and an end that follows from the machine's
+capacity. It is refused when the machine doesn't fit (stage, dia, gauge) or would go over capacity
+on any day, unless an override role (Stock Reservation Settings) gives a reason (kept in the
+activity's remarks and as a comment). A T&A rebuild keeps booked activities' machine and dates.

@@ -93,6 +93,35 @@ class TestProjectPlanning(unittest.TestCase):
                          (5000, 1200, 300, 900, 4100, 5000))
         self.assertEqual(o["project"]["delivery_date"], "2026-12-20")
 
+    def programme(self, request, over=False):
+        self.project(name="26STK-YARN-Q4-01", planning_order_type="Made to stock", stock_family="YARN", stock_period="Q4",
+                     saved_plan=json.dumps({"lines": [{"item": "YARN1", "qty": 1000, "mode": "top_up"}]}))
+        P = self.planner
+        P.free_lots = lambda items: {}
+        P.held_for = lambda project, items: {}
+        P.coming = lambda project, items: ({}, {})
+        self.f.get_all = lambda doctype, filters=None, **kw: []
+        saved_propose, saved_over = P.propose, self.api.period_over
+        P.propose = lambda payload: [{"levels": [{"item": "YARN1", "request": request}, {"item": "OTHER", "request": 99}]}]
+        self.api.period_over = lambda p: over
+        try:
+            return self.api.get_overview("26STK-YARN-Q4-01")
+        finally:
+            P.propose, self.api.period_over = saved_propose, saved_over
+
+    def test_programme_at_level(self):
+        o = self.programme(0)
+        self.assertEqual(o["programme"]["state"], "at_level")
+        self.assertEqual(o["rows"][0]["to_plan"], 0)
+        self.assertFalse(o["programme"]["period_over"])
+
+    def test_programme_below_level_says_how_much(self):
+        o = self.programme(400)
+        self.assertEqual((o["programme"]["state"], o["rows"][0]["to_plan"]), ("below", 400))
+
+    def test_programme_period_over(self):
+        self.assertTrue(self.programme(0, over=True)["programme"]["period_over"])
+
     def test_plan_tab_starts_from_the_sales_order(self):
         self.project(sales_order="SO-1")
         self.plan_api.sales_order_lines = lambda so: {"sales_order": so, "customer": "BUYER", "delivery_date": "2026-11-15",

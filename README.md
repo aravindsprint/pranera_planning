@@ -363,3 +363,12 @@ A made-to-stock plan counts as its own stock: the project's, any other made-to-s
 project's (free for anyone) and stock with no project (old stock from before projects were
 required) — the same free stock the re-order report counts (`planner.counts_as_own`).
 A made-to-order plan counts only its own project's stock.
+
+## Stock programme state on the Overview
+
+For a made-to-stock project the Overview runs the planner on the saved targets
+(`api.project_planning.programme_status`) and shows: **At level: nothing to plan**, or **Below
+level** with what a plan would buy (also per item, in the *To plan* column). Once today falls in a
+later period than the one the project was created in, it offers **Close programme**
+(`close_programme`: status Completed; the stock stays free for any order). The button to re-plan
+reads **Top up**.

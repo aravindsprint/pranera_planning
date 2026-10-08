@@ -450,3 +450,9 @@ The rest is expected at the end of the input's own T&A activity. Status Ready / 
 ready, "late" when the rest comes after the stage's planned start. Shown as *Raw material* on
 the Workstation Board (bookings and waiting activities; a machine shows how many of its bookings
 are waiting for material) and on the Time & Action tab, with the per-input breakdown on click.
+
+Workstation Board views: **Grid** (machines × days load), **Kanban** (a column per machine with
+its bookings in start order, status Booked / In progress / Late / Done, progress and raw-material
+badge; drag a job onto a machine to book or move it — same checks — or back to *Waiting* to release
+it) and **Calendar** (a month of whole weeks, all machines of the stage or one, each booking on
+every day it runs; for one machine the day's load %).

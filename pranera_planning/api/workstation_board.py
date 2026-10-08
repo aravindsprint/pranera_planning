@@ -145,6 +145,8 @@ def _add_material(machines, wait):
         for b in m["bookings"]:
             got = ta.actual_for(b["project"], {"kind": "Stage", "route": "In-house", "item_code": b["item_code"]})
             b["done_qty"] = flt(got.get("done_qty"))
+            b["actual_start"] = str(got["start"]) if got.get("start") else None
+            b["status"] = _status(b)
             acts.append({"name": b["activity"], "project": b["project"], "item_code": b["item_code"], "qty": b["qty"],
                          "done_qty": b["done_qty"], "planned_start": b["planned_start"]})
     acts += [{"name": a["name"], "project": a["project"], "item_code": a["item_code"], "qty": a["qty"],
@@ -159,3 +161,13 @@ def _add_material(machines, wait):
             b["material"] = ready.get(b["activity"])
     for a in wait:
         a["material"] = ready.get(a["name"])
+
+
+def _status(b):
+    """Done · In progress · Late (planned end passed) · Booked."""
+    from pranera_planning.ta_math import DONE_SHARE
+    if b["qty"] > 0 and b["done_qty"] >= b["qty"] * DONE_SHARE:
+        return "Done"
+    if b.get("actual_start"):
+        return "Late" if getdate(b["planned_end"]) < getdate(today()) else "In progress"
+    return "Late" if getdate(b["planned_start"]) < getdate(today()) else "Booked"

@@ -5,21 +5,45 @@
     <main class="page-content">
       <div v-if="error" class="alert alert-error pre" role="alert">{{ error }}</div>
       <div v-if="note" class="alert alert-success" role="status">{{ note }}</div>
+      <div v-if="needReason" class="override card">
+            <label class="form-label" for="wb-reason">Override reason for {{ needReason.item_code }} on {{ needReason.ws }}</label>
+            <div class="override__row">
+              <input id="wb-reason" v-model.trim="reason" class="form-input" placeholder="e.g. second shift approved for this week" />
+              <button class="btn btn-primary" :disabled="busy || !reason" @click="moveCard(needReason, true)">Book with override</button>
+              <button class="btn btn-outline" @click="needReason = null">Cancel</button>
+            </div>
+          </div>
 
       <section class="card controls">
         <div class="field"><label class="form-label" for="wb-stage">Stage</label>
           <select id="wb-stage" v-model="stage" class="form-input" @change="load">
             <option v-for="s in board?.stages || []" :key="s" :value="s">{{ s }}</option></select></div>
+        <div class="field"><span class="form-label">View</span>
+          <div class="seg" role="group" aria-label="View">
+            <button v-for="v in VIEWS" :key="v.key" type="button" :class="{ on: view === v.key }" :aria-pressed="view === v.key" @click="setView(v.key)">{{ v.label }}</button>
+          </div></div>
+        <template v-if="view !== 'calendar'">
         <div class="field"><label class="form-label" for="wb-start">From</label>
           <input id="wb-start" v-model="start" type="date" class="form-input" @change="load" /></div>
         <div class="field"><label class="form-label" for="wb-days">Days</label>
           <select id="wb-days" v-model.number="days" class="form-input" @change="load">
             <option :value="14">2 weeks</option><option :value="28">4 weeks</option><option :value="56">8 weeks</option></select></div>
+        </template>
         <button class="btn btn-outline" :disabled="loading" @click="load">{{ loading ? 'Loading…' : 'Refresh' }}</button>
-        <span class="legend"><i class="sw l0"></i>free <i class="sw l1"></i>&lt; 80% <i class="sw l2"></i>80–100% <i class="sw l3"></i>over <i class="sw off"></i>holiday</span>
+        <span v-if="view === 'grid'" class="legend"><i class="sw l0"></i>free <i class="sw l1"></i>&lt; 80% <i class="sw l2"></i>80–100% <i class="sw l3"></i>over <i class="sw off"></i>holiday</span>
       </section>
 
       <div v-if="loading && !board" class="loading-center"><div class="spinner"></div></div>
+
+      <template v-else-if="board && view === 'kanban'">
+        <WsKanban :board="board" :busy="busy" @move="(c) => moveCard(c)" @release="release" />
+        <p class="hint-k">Drag a job onto a machine to book or move it (its start stays; the end follows the machine's capacity), or back to
+          <i>Waiting</i> to release it. The same fit and capacity checks apply.</p>
+      </template>
+
+      <section v-else-if="board && view === 'calendar'" class="card">
+        <WsCalendar :board="board" :month="month" @month="shiftMonth" />
+      </section>
 
       <template v-else-if="board">
         <!-- the board -->
@@ -92,14 +116,6 @@
               </tbody>
             </table>
           </div>
-          <div v-if="needReason" class="override">
-            <label class="form-label" for="wb-reason">Override reason for {{ needReason.item_code }} on {{ pick[needReason.name].ws }}</label>
-            <div class="override__row">
-              <input id="wb-reason" v-model.trim="reason" class="form-input" placeholder="e.g. second shift approved for this week" />
-              <button class="btn btn-primary" :disabled="busy || !reason" @click="book(needReason, true)">Book with override</button>
-              <button class="btn btn-outline" @click="needReason = null">Cancel</button>
-            </div>
-          </div>
           <div class="foot">Capacity a day = Kg per hour × Working Hours × Production Capacity, from each Workstation; holidays from its Holiday List.
             The booking's end follows from that capacity. A machine that doesn't fit (stage, dia, gauge) or would go over capacity is refused
             unless an override role gives a reason.</div>
@@ -113,6 +129,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
 import MaterialBadge from '@/components/MaterialBadge.vue'
+import WsKanban from './WsKanban.vue'
+import WsCalendar from './WsCalendar.vue'
 import { callMessage } from '@/api/frappe'
 import { APP_BASE } from '@/config/app'
 
@@ -127,6 +145,29 @@ const note = ref('')
 const open = ref('')
 const pick = reactive({})
 const needReason = ref(null)
+const VIEWS = [{ key: 'grid', label: 'Grid' }, { key: 'kanban', label: 'Kanban' }, { key: 'calendar', label: 'Calendar' }]
+const view = ref('grid')
+const month = ref(new Date().toISOString().slice(0, 7))
+// the calendar shows whole weeks around the month: from the Monday on or before the 1st, 6 weeks
+function monthRange() {
+  const first = new Date(`${month.value}-01T00:00:00`)
+  const back = (first.getDay() + 6) % 7
+  const s = new Date(first.getTime() - back * 864e5)
+  return { start: `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`, days: 42 }
+}
+function setView(v) {
+  view.value = v
+  if (v === 'calendar') { const r = monthRange(); start.value = r.start; days.value = r.days }
+  else { start.value = new Date().toISOString().slice(0, 10); days.value = v === 'kanban' ? 56 : 28 }
+  load()
+}
+function shiftMonth(n) {
+  const d = new Date(`${month.value}-01T00:00:00`)
+  d.setMonth(d.getMonth() + n)
+  month.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const r = monthRange(); start.value = r.start; days.value = r.days
+  load()
+}
 const reason = ref('')
 
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
@@ -157,21 +198,24 @@ function pickSlot(a) {
   const c = a.candidates.find((x) => x.workstation === pick[a.name].ws)
   if (c?.slot) pick[a.name].start = c.slot.start
 }
-async function book(a, withReason = false) {
+function book(a) {
+  return moveCard({ activity: a.name, item_code: a.item_code, ws: pick[a.name].ws, start: pick[a.name].start })
+}
+async function moveCard(c, withReason = false) {
   busy.value = true
   error.value = ''
   note.value = ''
   try {
     const r = await callMessage('pranera_planning.api.workstation_board.allocate', {
-      activity: a.name, workstation: pick[a.name].ws, start: pick[a.name].start, override_reason: withReason ? reason.value : undefined,
+      activity: c.activity, workstation: c.ws, start: c.start, override_reason: withReason ? reason.value : undefined,
     })
-    note.value = `${a.item_code} booked on ${pick[a.name].ws}: ${dd(r.start)} → ${dd(r.end)} (${r.working_days} working day${r.working_days === 1 ? '' : 's'})${r.after_delivery ? ' — ends after the delivery date' : ''}.`
+    note.value = `${c.item_code} booked on ${c.ws}: ${dd(r.start)} → ${dd(r.end)} (${r.working_days} working day${r.working_days === 1 ? '' : 's'})${r.after_delivery ? ' — ends after the delivery date' : ''}.`
     needReason.value = null
     reason.value = ''
     await load()
   } catch (e) {
     error.value = String(e.message || '').replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '')
-    if (board.value?.can_override && !withReason) needReason.value = a
+    if (board.value?.can_override && !withReason) needReason.value = c
   } finally {
     busy.value = false
   }
@@ -195,6 +239,11 @@ onMounted(load)
 <style scoped>
 .controls { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
+.seg { display: inline-flex; border: 1px solid var(--slate-200); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: #fff; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--slate-700); }
+.seg button + button { border-left: 1px solid var(--slate-200); }
+.seg button.on { background: var(--slate-900, #0f172a); color: #fff; }
+.hint-k { font-size: 12px; color: var(--slate-500); margin-top: 6px; }
 .legend { margin-left: auto; font-size: 12px; color: var(--slate-500); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--slate-200); vertical-align: middle; }
 .card.flush { padding: 0; margin-bottom: 16px; overflow: hidden; }
@@ -224,7 +273,7 @@ onMounted(load)
 .btn.sm { padding: 4px 10px; font-size: 13px; }
 .form-input.d { width: 150px; }
 .data-table.compact td, .data-table.compact th { padding-top: 6px; padding-bottom: 6px; }
-.override { padding: 12px 18px; border-top: 1px solid var(--slate-200); background: #fff7ed; }
+.override { padding: 12px 18px; border: 1px solid #f3c79a; background: #fff7ed; margin-bottom: 12px; }
 .override__row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .override__row .form-input { flex: 1; min-width: 260px; }
 .foot { padding: 10px 18px; background: var(--slate-50, #f8fafc); border-top: 1px solid var(--slate-200); font-size: 12px; color: var(--slate-500); }

@@ -37,6 +37,23 @@
         <span v-if="view === 'grid'" class="legend"><i class="sw l0"></i>free <i class="sw l1"></i>&lt; 80% <i class="sw l2"></i>80–100% <i class="sw l3"></i>over <i class="sw off"></i>holiday</span>
       </section>
 
+      <section v-if="board && board.machines.length && !ws" class="card idle" aria-label="Machines without bookings">
+        <div class="idle__head">
+          <b>{{ idle.length ? `${idle.length} of ${board.machines.length} machines have no booking` : 'Every machine has a booking' }}</b>
+          <span class="sub">{{ dd(board.dates[0]) }} – {{ dd(board.dates[board.dates.length - 1]) }}</span>
+          <label class="only"><input v-model="idleOnly" type="checkbox" /> Show only these</label>
+        </div>
+        <div v-if="idle.length" class="chips">
+          <button v-for="m in idle" :key="m.name" class="chip-btn free" :title="`${m.label}: free all ${freeDays(m)} working days`"
+                  @click="ws = m.name; syncUrl()">{{ m.label }}</button>
+        </div>
+        <div v-if="light.length" class="chips">
+          <span class="sub">Lightly booked (under 30%):</span>
+          <button v-for="m in light" :key="m.name" class="chip-btn" :title="`${freeDays(m)} free working days`"
+                  @click="ws = m.name; syncUrl()">{{ m.label }} · {{ loadPct(m) }}% · {{ freeDays(m) }} d free</button>
+        </div>
+      </section>
+
       <div v-if="loading && !board" class="loading-center"><div class="spinner"></div></div>
 
       <template v-else-if="board && view === 'kanban'">
@@ -154,7 +171,20 @@ const route = useRoute()
 const router = useRouter()
 const ws = ref(String(route.query.ws || ''))
 // the board as shown: one machine when a machine is chosen, and only waiting jobs that fit it
+const idleOnly = ref(false)
+// per machine over the period shown: % of capacity booked, and working days with nothing booked
+const loadPct = (m) => {
+  const cap = m.cells.reduce((a, c) => a + c.capacity, 0)
+  return cap > 0 ? Math.round((m.cells.reduce((a, c) => a + c.booked, 0) / cap) * 100) : 0
+}
+const freeDays = (m) => m.cells.filter((c) => c.capacity > 0 && c.booked <= 0).length
+const idle = computed(() => (board.value?.machines || []).filter((m) => !m.cells.some((c) => c.booked > 0)))
+const light = computed(() => (board.value?.machines || []).filter((m) => m.cells.some((c) => c.booked > 0) && loadPct(m) < 30))
 const vb = computed(() => {
+  if (board.value && !ws.value && idleOnly.value) {
+    const names = new Set(idle.value.map((m) => m.name))
+    return { ...board.value, machines: board.value.machines.filter((m) => names.has(m.name)) }
+  }
   if (!board.value || !ws.value) return board.value
   return {
     ...board.value,
@@ -271,6 +301,13 @@ onMounted(load)
 .seg button { border: 0; background: #fff; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--slate-700); }
 .seg button + button { border-left: 1px solid var(--slate-200); }
 .seg button.on { background: var(--slate-900, #0f172a); color: #fff; }
+.idle { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.idle__head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.only { margin-left: auto; font-size: 13px; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip-btn { border: 1px solid var(--slate-200); background: #fff; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.chip-btn.free { background: #ecfdf3; border-color: #bbe5c8; color: #166534; font-weight: 600; }
+.chip-btn:hover { border-color: var(--slate-400); }
 .hint-k { font-size: 12px; color: var(--slate-500); margin-top: 6px; }
 .legend { margin-left: auto; font-size: 12px; color: var(--slate-500); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--slate-200); vertical-align: middle; }

@@ -456,3 +456,7 @@ its bookings in start order, status Booked / In progress / Late / Done, progress
 badge; drag a job onto a machine to book or move it — same checks — or back to *Waiting* to release
 it) and **Calendar** (a month of whole weeks, all machines of the stage or one, each booking on
 every day it runs; for one machine the day's load %).
+
+The Workstation Board also lists the machines with **no booking** in the period shown (and those
+under 30% booked, with their free working days); a click filters to that machine, and *Show only
+these* limits every view to the idle machines.

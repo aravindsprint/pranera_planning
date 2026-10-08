@@ -4,10 +4,7 @@
       <button class="btn btn-outline sm" aria-label="Previous month" @click="$emit('month', -1)"><i class="pi pi-chevron-left"></i></button>
       <h2 class="h2">{{ monthLabel }}</h2>
       <button class="btn btn-outline sm" aria-label="Next month" @click="$emit('month', 1)"><i class="pi pi-chevron-right"></i></button>
-      <select v-model="machine" class="form-input mach" aria-label="Machine">
-        <option value="">All {{ board.stage }} machines</option>
-        <option v-for="m in board.machines" :key="m.name" :value="m.name">{{ m.label }}</option>
-      </select>
+      <span class="mach sub">{{ machine ? board.machines[0].label : `All ${board.stage} machines` }} · choose one in Machine above</span>
     </div>
     <div class="cal" role="grid" :aria-label="`Bookings in ${monthLabel}`">
       <div v-for="w in WEEKDAYS" :key="w" class="dow" role="columnheader">{{ w }}</div>
@@ -26,13 +23,14 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { APP_BASE } from '@/config/app'
 
 const props = defineProps({ board: { type: Object, required: true }, month: { type: String, required: true } })
 defineEmits(['month'])
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const machine = ref('')
+// one machine chosen (the page's Machine filter): show its daily load and holidays too
+const machine = computed(() => (props.board.machines.length === 1 ? props.board.machines[0].name : ''))
 const todayStr = new Date().toISOString().slice(0, 10)
 const f = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
 const slug = (s) => String(s || '').toLowerCase().replace(/\s+/g, '-')

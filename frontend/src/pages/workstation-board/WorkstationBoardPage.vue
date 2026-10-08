@@ -16,8 +16,12 @@
 
       <section class="card controls">
         <div class="field"><label class="form-label" for="wb-stage">Stage</label>
-          <select id="wb-stage" v-model="stage" class="form-input" @change="load">
+          <select id="wb-stage" v-model="stage" class="form-input" @change="ws = ''; syncUrl(); load()">
             <option v-for="s in board?.stages || []" :key="s" :value="s">{{ s }}</option></select></div>
+        <div class="field"><label class="form-label" for="wb-ws">Machine</label>
+          <select id="wb-ws" v-model="ws" class="form-input" @change="syncUrl">
+            <option value="">All {{ board?.stage || '' }} machines</option>
+            <option v-for="m in board?.machines || []" :key="m.name" :value="m.name">{{ m.label }}</option></select></div>
         <div class="field"><span class="form-label">View</span>
           <div class="seg" role="group" aria-label="View">
             <button v-for="v in VIEWS" :key="v.key" type="button" :class="{ on: view === v.key }" :aria-pressed="view === v.key" @click="setView(v.key)">{{ v.label }}</button>
@@ -36,27 +40,27 @@
       <div v-if="loading && !board" class="loading-center"><div class="spinner"></div></div>
 
       <template v-else-if="board && view === 'kanban'">
-        <WsKanban :board="board" :busy="busy" @move="(c) => moveCard(c)" @release="release" />
+        <WsKanban :board="vb" :busy="busy" @move="(c) => moveCard(c)" @release="release" />
         <p class="hint-k">Drag a job onto a machine to book or move it (its start stays; the end follows the machine's capacity), or back to
           <i>Waiting</i> to release it. The same fit and capacity checks apply.</p>
       </template>
 
       <section v-else-if="board && view === 'calendar'" class="card">
-        <WsCalendar :board="board" :month="month" @month="shiftMonth" />
+        <WsCalendar :board="vb" :month="month" @month="shiftMonth" />
       </section>
 
       <template v-else-if="board">
         <!-- the board -->
         <section class="card flush">
-          <div class="card__head"><h2 class="h2">{{ board.stage }} machines</h2>
-            <span class="sub">{{ board.machines.length }} machine{{ board.machines.length === 1 ? '' : 's' }} · click a machine for its bookings</span></div>
-          <p v-if="!board.machines.length" class="empty">No workstation has Planning stage “{{ board.stage }}”. Set it on the Workstation form.</p>
+          <div class="card__head"><h2 class="h2">{{ ws ? vb.machines[0]?.label : `${board.stage} machines` }}</h2>
+            <span class="sub">{{ vb.machines.length }} machine{{ vb.machines.length === 1 ? '' : 's' }} · click a machine for its bookings</span></div>
+          <p v-if="!vb.machines.length" class="empty">No workstation has Planning stage “{{ board.stage }}”. Set it on the Workstation form.</p>
           <div v-else class="grid-wrap">
             <table class="grid">
               <thead><tr><th class="m">Machine</th>
                 <th v-for="d in board.dates" :key="d" class="c" :class="{ wk: isWeekStart(d) }">{{ dd(d) }}<br /><span class="sub">{{ wd(d) }}</span></th></tr></thead>
               <tbody>
-                <template v-for="m in board.machines" :key="m.name">
+                <template v-for="m in vb.machines" :key="m.name">
                   <tr class="mrow" @click="open = open === m.name ? '' : m.name">
                     <th class="m">
                       <div class="item">{{ m.label }}</div>
@@ -88,13 +92,13 @@
 
         <!-- waiting for a machine -->
         <section class="card flush">
-          <div class="card__head"><h2 class="h2">Waiting for a machine</h2><span class="sub">{{ board.waiting.length }} in-house {{ board.stage }} activit{{ board.waiting.length === 1 ? 'y' : 'ies' }}</span></div>
-          <p v-if="!board.waiting.length" class="empty">Every in-house {{ board.stage }} activity has a machine.</p>
+          <div class="card__head"><h2 class="h2">Waiting for a machine</h2><span class="sub">{{ vb.waiting.length }} in-house {{ board.stage }} activit{{ vb.waiting.length === 1 ? 'y' : 'ies' }}{{ ws ? ` that fit ${ws}` : '' }}</span></div>
+          <p v-if="!vb.waiting.length" class="empty">Every in-house {{ board.stage }} activity has a machine.</p>
           <div v-else class="scroll">
             <table class="data-table">
               <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>Planned</th><th>Raw material</th><th>Machine</th><th>Start</th><th></th></tr></thead>
               <tbody>
-                <tr v-for="a in board.waiting" :key="a.name">
+                <tr v-for="a in vb.waiting" :key="a.name">
                   <td><a :href="`${APP_BASE}/project-planning?project=${encodeURIComponent(a.project)}&tab=ta`">{{ a.project }}</a></td>
                   <td><div class="item">{{ a.item_code }}</div><div class="sub"><template v-if="a.dia">{{ a.dia }}″ {{ a.gauge }}G</template></div></td>
                   <td class="num">{{ fmt(a.qty - a.done_qty) }} <span class="sub">{{ a.uom }}</span></td>
@@ -126,7 +130,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import MaterialBadge from '@/components/MaterialBadge.vue'
 import WsKanban from './WsKanban.vue'
@@ -135,7 +140,7 @@ import { callMessage } from '@/api/frappe'
 import { APP_BASE } from '@/config/app'
 
 const board = ref(null)
-const stage = ref('')
+const stage = ref(String(useRoute().query.stage || ''))
 const start = ref(new Date().toISOString().slice(0, 10))
 const days = ref(28)
 const loading = ref(false)
@@ -145,6 +150,27 @@ const note = ref('')
 const open = ref('')
 const pick = reactive({})
 const needReason = ref(null)
+const route = useRoute()
+const router = useRouter()
+const ws = ref(String(route.query.ws || ''))
+// the board as shown: one machine when a machine is chosen, and only waiting jobs that fit it
+const vb = computed(() => {
+  if (!board.value || !ws.value) return board.value
+  return {
+    ...board.value,
+    machines: board.value.machines.filter((m) => m.name === ws.value),
+    waiting: board.value.waiting.filter((a) => a.candidates.some((c) => c.workstation === ws.value && c.fits)),
+  }
+})
+function syncUrl() {
+  router.replace({ query: { ...route.query, ws: ws.value || undefined, stage: stage.value || undefined } })
+  if (ws.value && board.value) {
+    for (const a of vb.value.waiting) {
+      const c = a.candidates.find((x) => x.workstation === ws.value)
+      pick[a.name] = { ws: ws.value, start: c?.slot ? c.slot.start : a.planned_start }
+    }
+  }
+}
 const VIEWS = [{ key: 'grid', label: 'Grid' }, { key: 'kanban', label: 'Kanban' }, { key: 'calendar', label: 'Calendar' }]
 const view = ref('grid')
 const month = ref(new Date().toISOString().slice(0, 7))
@@ -184,10 +210,12 @@ async function load() {
   try {
     board.value = await callMessage('pranera_planning.api.workstation_board.get_board', { stage: stage.value || undefined, start: start.value, days: days.value })
     stage.value = board.value.stage || ''
+    if (ws.value && !board.value.machines.some((m) => m.name === ws.value)) ws.value = ''
     for (const a of board.value.waiting) {
       const best = a.candidates.find((c) => c.fits && c.slot)
       pick[a.name] = { ws: best ? best.workstation : '', start: best ? best.slot.start : a.planned_start }
     }
+    if (ws.value) syncUrl()
   } catch (e) {
     error.value = e.message
   } finally {

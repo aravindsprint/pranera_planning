@@ -38,6 +38,7 @@
                       <div class="item">{{ m.label }}</div>
                       <div class="sub">{{ fmt(m.per_day) }} kg/day<template v-if="m.dia"> · {{ m.dia }}″ {{ m.gauge }}G</template></div>
                       <div v-if="m.missing.length" class="miss">set: {{ m.missing.join(', ') }}</div>
+                      <div v-if="notReady(m)" class="miss">{{ notReady(m) }} booking{{ notReady(m) === 1 ? '' : 's' }} waiting for material</div>
                     </th>
                     <td v-for="c in m.cells" :key="c.date" class="c" :class="[cls(c), { wk: isWeekStart(c.date) }]"
                         :title="c.capacity ? `${dd(c.date)}: ${fmt(c.booked)} of ${fmt(c.capacity)} kg` : `${dd(c.date)}: holiday`">
@@ -46,11 +47,11 @@
                   <tr v-if="open === m.name" class="detail"><td :colspan="board.dates.length + 1">
                     <p v-if="!m.bookings.length" class="sub">Nothing booked in these days.</p>
                     <table v-else class="data-table compact">
-                      <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>From → to</th><th>Remarks</th><th></th></tr></thead>
+                      <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>From → to</th><th>Raw material</th><th>Remarks</th><th></th></tr></thead>
                       <tbody><tr v-for="b in m.bookings" :key="b.activity">
                         <td><a :href="`${APP_BASE}/project-planning?project=${encodeURIComponent(b.project)}&tab=ta`">{{ b.project }}</a></td>
                         <td>{{ b.item_code }}</td><td class="num">{{ fmt(b.qty) }} {{ b.uom }}</td>
-                        <td>{{ dd(b.planned_start) }} → {{ dd(b.planned_end) }}</td><td class="sub">{{ b.remarks }}</td>
+                        <td>{{ dd(b.planned_start) }} → {{ dd(b.planned_end) }}</td><td @click.stop><MaterialBadge :m="b.material" /></td><td class="sub">{{ b.remarks }}</td>
                         <td class="act"><button class="btn btn-outline sm" :disabled="busy" @click.stop="release(b)">Release</button></td>
                       </tr></tbody>
                     </table>
@@ -67,13 +68,14 @@
           <p v-if="!board.waiting.length" class="empty">Every in-house {{ board.stage }} activity has a machine.</p>
           <div v-else class="scroll">
             <table class="data-table">
-              <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>Planned</th><th>Machine</th><th>Start</th><th></th></tr></thead>
+              <thead><tr><th>Project</th><th>Item</th><th class="num">Qty</th><th>Planned</th><th>Raw material</th><th>Machine</th><th>Start</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="a in board.waiting" :key="a.name">
                   <td><a :href="`${APP_BASE}/project-planning?project=${encodeURIComponent(a.project)}&tab=ta`">{{ a.project }}</a></td>
                   <td><div class="item">{{ a.item_code }}</div><div class="sub"><template v-if="a.dia">{{ a.dia }}″ {{ a.gauge }}G</template></div></td>
                   <td class="num">{{ fmt(a.qty - a.done_qty) }} <span class="sub">{{ a.uom }}</span></td>
                   <td>{{ dd(a.planned_start) }} → {{ dd(a.planned_end) }}</td>
+                  <td><MaterialBadge :m="a.material" /></td>
                   <td>
                     <select v-model="pick[a.name].ws" class="form-input" :aria-label="`Machine for ${a.item_code}`" @change="pickSlot(a)">
                       <option value="">Choose…</option>
@@ -110,6 +112,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import AppHeader from '@/components/AppHeader.vue'
+import MaterialBadge from '@/components/MaterialBadge.vue'
 import { callMessage } from '@/api/frappe'
 import { APP_BASE } from '@/config/app'
 
@@ -131,6 +134,7 @@ const dt = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`)
 const dd = (d) => (d ? dt(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—')
 const wd = (d) => dt(d).toLocaleDateString(undefined, { weekday: 'narrow' })
 const isWeekStart = (d) => dt(d).getDay() === 1
+const notReady = (m) => m.bookings.filter((b) => b.material && b.material.status !== 'Ready').length
 const cls = (c) => (c.capacity <= 0 ? (c.booked > 0 ? 'l3' : 'off') : c.pct > 100 ? 'l3' : c.pct >= 80 ? 'l2' : c.pct > 0 ? 'l1' : 'l0')
 
 async function load() {

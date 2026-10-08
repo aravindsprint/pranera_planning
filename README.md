@@ -440,3 +440,13 @@ Reports (`ta_reports.py`, `api.ta_reports`, page `/planning-app/ta-reports`):
 - **Workstation utilisation**: booked kg against capacity per machine and week.
 - **Delays**: for activities finished in a period, planned vs actual days per stage, average
   delay, on-time %, plus late open ones, with the remarks as reasons and slip against the first plan.
+
+## Is the raw material ready?
+
+`material_ready.py` checks each open stage activity's inputs (its item's BOM, process loss
+counted) against what covers them: already transferred to its Work Orders, then the project's
+own free lots and stock held for it (shared between its stages, earliest planned start first).
+The rest is expected at the end of the input's own T&A activity. Status Ready / Partial / Not
+ready, "late" when the rest comes after the stage's planned start. Shown as *Raw material* on
+the Workstation Board (bookings and waiting activities; a machine shows how many of its bookings
+are waiting for material) and on the Time & Action tab, with the per-input breakdown on click.

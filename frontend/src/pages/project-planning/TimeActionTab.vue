@@ -63,7 +63,7 @@
         <div class="scroll">
           <table class="data-table">
             <thead><tr><th>Activity</th><th>By</th><th class="num">Qty</th><th>Planned start</th><th>Planned end</th>
-              <th>Actual</th><th>Status</th><th class="num">Delay</th><th>Remarks</th><th></th></tr></thead>
+              <th>Actual</th><th>Status</th><th>Raw material</th><th class="num">Delay</th><th>Remarks</th><th></th></tr></thead>
             <tbody>
               <tr v-for="r in rows" :key="r._k" :class="{ late: isLate(r) }">
                 <td>
@@ -87,6 +87,7 @@
                   <span v-else class="sub">—</span>
                 </td>
                 <td><span class="badge" :class="badge(r)">{{ isLate(r) && r.status !== 'Done' ? (r.late_start ? 'Start late' : 'Late') : r.status }}</span></td>
+                <td><MaterialBadge v-if="r.kind === 'Stage' && r.status !== 'Done'" :m="r.material" /></td>
                 <td class="num" :class="{ bad: r.delay_days > 0, good: r.status === 'Done' && r.delay_days <= 0 }">
                   {{ r.delay_days ? `${r.delay_days > 0 ? '+' : ''}${r.delay_days} d` : '—' }}</td>
                 <td><input v-model.trim="r.remarks" class="form-input" placeholder="Reason, note" :aria-label="`${r.activity} remarks`" /></td>
@@ -107,6 +108,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { callMessage } from '@/api/frappe'
+import MaterialBadge from '@/components/MaterialBadge.vue'
 import { APP_BASE } from '@/config/app'
 
 const props = defineProps({ project: { type: String, required: true } })
@@ -182,7 +184,7 @@ const rebuild = () => run(() => callMessage('pranera_planning.api.time_and_actio
   'Rebuilt from the plan. Activities already started kept their dates.')
 const save = () => run(() => callMessage('pranera_planning.api.time_and_action.save_ta', {
   project: props.project,
-  rows: rows.value.map(({ _k, status, done_qty, delay_days, late_start, slip_days, ...r }) => r),
+  rows: rows.value.map(({ _k, status, done_qty, delay_days, late_start, slip_days, material, ...r }) => r),
 }), 'Saved.')
 function addMilestone() {
   rows.value.push({ _k: ++seq, activity: '', kind: 'Milestone', source: 'manual', planned_start: '', planned_end: data.value.deliver_on,

@@ -46,6 +46,7 @@ def get_board(stage=None, start=None, days=28):
                          "missing": [x for x, ok in (("Kg per hour", ws["kg_per_hour"] > 0), ("Working hours", ws["hours_set"])) if not ok],
                          "cells": cells, "bookings": [_row(b) for b in books if b.workstation == name]})
     wait = W.waiting(stage)
+    _add_material(machines, wait)
     fit = W.item_fit({a["item_code"] for a in wait})
     for a in wait:
         a.update(fit.get(a["item_code"]) or {})
@@ -133,3 +134,28 @@ def release(activity):
     frappe.has_permission(PLAN, "write", frappe.get_doc(PLAN, row.parent), throw=True)
     frappe.db.set_value(ACT, row.name, "workstation", None)
     return {"activity": row.name}
+
+
+def _add_material(machines, wait):
+    """Raw material readiness on every booking and waiting activity (material_ready.py)."""
+    from pranera_planning import ta
+    from pranera_planning.material_ready import readiness
+    acts = []
+    for m in machines:
+        for b in m["bookings"]:
+            got = ta.actual_for(b["project"], {"kind": "Stage", "route": "In-house", "item_code": b["item_code"]})
+            b["done_qty"] = flt(got.get("done_qty"))
+            acts.append({"name": b["activity"], "project": b["project"], "item_code": b["item_code"], "qty": b["qty"],
+                         "done_qty": b["done_qty"], "planned_start": b["planned_start"]})
+    acts += [{"name": a["name"], "project": a["project"], "item_code": a["item_code"], "qty": a["qty"],
+              "done_qty": a.get("done_qty"), "planned_start": a["planned_start"]} for a in wait]
+    try:
+        ready = readiness(acts)
+    except Exception:
+        frappe.log_error(title="Material readiness failed")
+        ready = {}
+    for m in machines:
+        for b in m["bookings"]:
+            b["material"] = ready.get(b["activity"])
+    for a in wait:
+        a["material"] = ready.get(a["name"])

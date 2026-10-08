@@ -147,6 +147,15 @@ def view(project):
         if a.get("kind") == ta_math.MILESTONE:
             st["actual_start"] = a.get("actual_start") or st["actual_start"]
         rows.append({**a, **st})
+    try:
+        from pranera_planning.material_ready import readiness
+        ready = readiness([{**r, "project": project} for r in rows
+                           if r.get("kind") == ta_math.STAGE and r.get("status") != ta_math.DONE and r.get("name")])
+    except Exception:
+        frappe.log_error(title="Material readiness failed")
+        ready = {}
+    for r in rows:
+        r["material"] = ready.get(r.get("name"))
     return {"exists": True, "project": project, "name": doc.name, "order_type": doc.order_type,
             "deliver_on": str(doc.deliver_on) if doc.deliver_on else None,
             "generated_on": str(doc.generated_on) if doc.generated_on else None,

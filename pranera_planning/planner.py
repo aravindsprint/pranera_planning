@@ -123,14 +123,14 @@ def counts_as_own(lot_project, project, order_type, kinds):
 
 
 def can_borrow(lot, project, order_type, kinds):
-    """Whether another project's free stock may be borrowed (reserved) by this plan: purchased
-    (not produced) stock of a made-to-stock project. A project with no Order type counts as made
-    to order — its stock belongs to its own order — so it is never borrowed from."""
-    if not lot.get("project") or lot.get("produced"):
+    """Whether free stock outside this plan's own may be borrowed (reserved) by it: purchased,
+    not produced, stock of any project that is not made to order — a made-to-stock project, an
+    old project with no Order type — and old stock that came under no project at all."""
+    if lot.get("produced"):
         return False
-    if (kinds.get(lot["project"]) or MTO) != MTS:
+    if lot.get("project") and kinds.get(lot["project"]) == MTO:
         return False
-    return not counts_as_own(lot["project"], project, order_type, kinds)
+    return not counts_as_own(lot.get("project"), project, order_type, kinds)
 
 
 def free_lots(items):
@@ -419,7 +419,8 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "service_from": ("this item's last job work" if previous.get(code) == service and service else
                                         "the stage's most common" if service else ""),
                        "coming_from": come_src.get(code, []), "held": held_here,
-                       "reserve_from": sorted({l["project"] for l in borrow_lots[code]})[:3] if r["reserve"] > EPS else [],
+                       "reserve_from": sorted({l["project"] or "old stock (no project)" for l in allocate_lots(borrow_lots[code], r["reserve"])[0]})[:3]
+                       if r["reserve"] > EPS else [],
                        "lots_picked": code in picked_by_user,
                        "lots": [{"key": lot_key(l), "project": l["project"], "batch_no": l["batch_no"], "warehouse": l["warehouse"],
                                  "roll_no": l.get("roll_no") or "", "free": round(l["qty"], 3)} for l in all_borrow.get(code, [])],

@@ -460,3 +460,12 @@ every day it runs; for one machine the day's load %).
 The Workstation Board also lists the machines with **no booking** in the period shown (and those
 under 30% booked, with their free working days); a click filters to that machine, and *Show only
 these* limits every view to the idle machines.
+
+## Who can be borrowed from (one rule for the plan and the request check)
+
+A plan may borrow (reserve) free purchased stock of any project that is not made to order — made
+to stock, or an old project with no Order type — and old stock that came under no project at all
+(`planner.can_borrow`); the Material Request check counts the same stock as free. A Project Stock
+Reservation's source project is now optional: empty means old stock with no project
+(`ProjectStockReservation.validate_batch`). The request check's message sends the user back to
+re-plan, which reserves that stock and asks only for the rest.

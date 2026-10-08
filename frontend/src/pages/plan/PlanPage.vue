@@ -195,7 +195,7 @@
               <div class="card__title">Reservations made on Create</div>
               <p v-if="!p.reservations.length" class="sub">None.</p>
               <div v-for="(g, gi) in groupReservations(p.reservations)" :key="gi" class="kv" :class="{ orange: g.kind === 'borrow' }">
-                <span>{{ g.item_code }} · {{ g.kind === 'own' ? 'own stock' : `from ${g.project}` }} · {{ g.count }} {{ g.count === 1 ? 'lot' : 'lots/rolls' }}</span>
+                <span>{{ g.item_code }} · {{ g.kind === 'own' ? 'own stock' : `from ${g.project || 'old stock (no project)'}` }} · {{ g.count }} {{ g.count === 1 ? 'lot' : 'lots/rolls' }}</span>
                 <b>{{ fmt(g.qty, 2) }}</b>
               </div>
             </div>
@@ -251,7 +251,7 @@
           <tbody>
             <tr v-for="l in picker.lots" :key="l.key">
               <td><input v-model="l.on" type="checkbox" :aria-label="`Use ${l.batch_no} ${l.roll_no}`" @change="onTick(l)" /></td>
-              <td>{{ l.project }}</td><td class="mono">{{ l.batch_no }}</td><td>{{ l.warehouse }}</td><td>{{ l.roll_no || '—' }}</td>
+              <td>{{ l.project || 'old stock (no project)' }}</td><td class="mono">{{ l.batch_no }}</td><td>{{ l.warehouse }}</td><td>{{ l.roll_no || '—' }}</td>
               <td class="num">{{ fmt(l.free, 2) }}</td>
               <td class="num"><input v-model.number="l.qty" type="number" min="0" :max="l.free" step="any" class="form-input pk-qty"
                                      :disabled="!l.on" :aria-label="`Quantity from ${l.batch_no}`" /></td>

@@ -83,10 +83,11 @@ class TestPropose(unittest.TestCase):
         kinds = {"25PUR001": mts, "PTIN1710": mto}               # PROJ-0002: no Order type
         lot = lambda p, produced=False: {"project": p, "produced": produced}
         self.assertTrue(can(lot("25PUR001"), "SAL-ORD-1", mto, kinds))
-        self.assertFalse(can(lot("PROJ-0002"), "SAL-ORD-1", mto, kinds))     # empty = made to order
-        self.assertFalse(can(lot("PTIN1710"), "SAL-ORD-1", mto, kinds))
+        self.assertTrue(can(lot("PROJ-0002"), "SAL-ORD-1", mto, kinds))      # no Order type: free
+        self.assertTrue(can(lot(None), "SAL-ORD-1", mto, kinds))             # old stock, no project
+        self.assertFalse(can(lot("PTIN1710"), "SAL-ORD-1", mto, kinds))      # another order's
         self.assertFalse(can(lot("25PUR001", produced=True), "SAL-ORD-1", mto, kinds))
-        self.assertFalse(can(lot(None), "SAL-ORD-1", mto, kinds))
+        self.assertFalse(can(lot(None), "26STK-YARN-Q4-01", mts, kinds))     # stock plan: it's own, not borrowed
 
     def test_what_counts_as_own_stock(self):
         own, kinds = self.P.counts_as_own, {"25PUR001": "Made to stock", "PTIN1710": "Made to order"}

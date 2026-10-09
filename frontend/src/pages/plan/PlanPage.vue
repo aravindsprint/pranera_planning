@@ -217,7 +217,7 @@
                 <div v-if="lines.length" class="kv">
                   <span>{{ kind === 'Job work' ? 'Purchase · job work' : kind === 'Purchase' ? 'Purchase · materials' : 'Manufacture' }}:
                     {{ lines.map((l) => `${l.item_code} ${fmt(l.qty)}`).join(' · ') }}</span>
-                  <b>{{ lines.length }} {{ lines.length === 1 ? 'line' : 'lines' }}</b>
+                  <b>{{ p.per_item_requests ? `${lines.length} request${lines.length === 1 ? '' : 's'}, one per item` : `${lines.length} ${lines.length === 1 ? 'line' : 'lines'}` }}</b>
                 </div>
               </template>
             </div>

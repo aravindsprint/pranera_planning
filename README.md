@@ -488,3 +488,8 @@ Purchase request; on Create the Manufacture request is reduced by the same quant
 (`mr_moves.py`): a draft is edited (an empty one deleted), a submitted one is cancelled and amended
 with the reduced line — only while nothing on it is a Work Order yet; otherwise reduce the Work
 Order instead.
+
+Plans create **one Material Request per item** by default (Re-order Settings › Material Requests
+from a plan: *One per item* / *One per kind*), so one item's request can be changed, cancelled or
+moved to job work without touching the others — moving all of a submitted one-item request just
+cancels it.

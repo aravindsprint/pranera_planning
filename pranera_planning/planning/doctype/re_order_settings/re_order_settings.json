@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-30 18:00:00.000000",
- "modified": "2026-10-05 10:00:00.000000",
+ "modified": "2026-10-09 23:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -236,6 +236,14 @@
    "options": "Block\nWarn\nOff",
    "default": "Block",
    "description": "Block: a Work Order operation or Job Card on a machine other than the one booked in the T&A plan, or a Job Card started before its Work Order has material transferred, is refused unless an override role gives a T&A override reason."
+  },
+  {
+   "fieldname": "request_grouping",
+   "label": "Material Requests from a plan",
+   "fieldtype": "Select",
+   "options": "One per item\nOne per kind",
+   "default": "One per item",
+   "description": "One per item: every item gets its own request, so one can be changed, cancelled or moved to job work without touching the others. One per kind: one Manufacture, one job-work and one Purchase request per plan."
   }
  ],
  "field_order": [
@@ -263,6 +271,7 @@
   "workstation_check",
   "plan_section",
   "default_warehouse",
+  "request_grouping",
   "stock_section",
   "stock_project_period",
   "stock_project_pattern",

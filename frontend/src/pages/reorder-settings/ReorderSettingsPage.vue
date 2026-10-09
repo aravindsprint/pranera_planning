@@ -216,6 +216,12 @@
           <div class="field half"><label class="form-label" for="rs-wh">Warehouse for planned requests</label>
             <LinkField id="rs-wh" v-model="s.default_warehouse" doctype="Warehouse" placeholder="e.g. Stores - PSS" :disabled="!s.can_write" />
             <span class="hint">Where Material Requests from a plan expect the goods (each item's default warehouse is used first).</span></div>
+          <div class="field half"><label class="form-label" for="rs-group">Material Requests from a plan</label>
+            <select id="rs-group" v-model="s.request_grouping" class="form-input" :disabled="!s.can_write">
+              <option>One per item</option><option>One per kind</option></select>
+            <span class="hint">{{ (s.request_grouping || 'One per item') === 'One per item'
+              ? 'Every item gets its own request: one can be changed, cancelled or moved to job work without touching the others.'
+              : 'One Manufacture, one job-work and one Purchase request per plan, with a line per item.' }}</span></div>
         </section>
 
         <!-- Made-to-stock projects -->

@@ -6,7 +6,8 @@ as coming and raises it as a job-work Purchase request instead; on Create the Ma
 is reduced by the same quantity (reduce()):
 
     draft request       its line is reduced (removed at 0; an empty request is deleted)
-    submitted request   cancelled and amended with the reduced line, the amendment submitted —
+    submitted request   cancelled (one per item, all of it moved: just cancelled) or amended with
+                        the reduced line and the amendment submitted —
                         only while nothing on it has been made into a Work Order yet; otherwise
                         refused, with the Work Order to reduce instead
 Drafts are reduced before submitted requests, newest first.

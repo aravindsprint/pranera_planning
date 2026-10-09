@@ -498,7 +498,10 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                              for ln in lines},
             "totals": {"own": sum(l["own"] for l in levels), "coming": sum(l["coming"] for l in levels),
                        "reserve": sum(l["reserve"] for l in levels),
-                       "requests": sum(1 for k in requests if requests[k]), "request_lines": sum(len(v) for v in requests.values())}}
+                       "requests": (sum(len(v) for v in requests.values()) if per_item_requests(settings)
+                                    else sum(1 for k in requests if requests[k])),
+                       "request_lines": sum(len(v) for v in requests.values())},
+            "per_item_requests": per_item_requests(settings)}
 
 
 def _days(x):
@@ -532,6 +535,11 @@ def create(payload):
     for prop in propose(payload):
         out.append(_create_one(prop))
     return out
+
+
+def per_item_requests(settings):
+    """Re-order Settings › Material Requests from a plan: one per item (default) or one per kind."""
+    return (settings.get("request_grouping") or "One per item") != "One per kind"
 
 
 def _warehouse_for(item, comp, settings):
@@ -589,27 +597,29 @@ def _create_one(prop):
     kinds = {"Manufacture": "Manufacture", "Job work": "Purchase", "Purchase": "Purchase"}
     all_codes = {ln["item_code"] for lines in prop["requests"].values() for ln in lines}
     uoms = dict(frappe.get_all("Item", filters={"name": ["in", list(all_codes)]}, fields=["name", "stock_uom"], as_list=True)) if all_codes else {}
-    for kind, lines in prop["requests"].items():
-        if not lines:
-            continue
-        mr = frappe.get_doc({"doctype": "Material Request", "material_request_type": kinds[kind], "company": comp,
-                             "transaction_date": today(), "schedule_date": prop["needed_by"]})
-        if _has("Material Request", "for_project"):
-            mr.for_project = project
-        if prop["order_type"] == MTS and _has("Material Request", "from_stock_plan"):
-            mr.from_stock_plan = 1                     # buys for stock on purpose: not blocked by free stock
-        for ln in lines:
-            uom = uoms.get(ln["item_code"])
-            row = {"item_code": ln["item_code"], "qty": ln["qty"], "schedule_date": prop["needed_by"], "project": project,
-                   "uom": uom, "stock_uom": uom, "conversion_factor": 1,
-                   "warehouse": _warehouse_for(ln.get("for_item") or ln["item_code"], comp, settings)}
-            if ln.get("bom_no"):
-                row["bom_no"] = ln["bom_no"]
-            if _has("Material Request Item", "for_project"):
-                row["for_project"] = project
-            mr.append("items", row)
-        mr.insert()
-        made_mr.append({"name": mr.name, "kind": kind, "lines": len(lines)})
+    per_item = per_item_requests(settings)
+    for kind, all_lines in prop["requests"].items():
+        for lines in ([[ln] for ln in all_lines] if per_item else [all_lines]):
+            if not lines:
+                continue
+            mr = frappe.get_doc({"doctype": "Material Request", "material_request_type": kinds[kind], "company": comp,
+                                 "transaction_date": today(), "schedule_date": prop["needed_by"]})
+            if _has("Material Request", "for_project"):
+                mr.for_project = project
+            if prop["order_type"] == MTS and _has("Material Request", "from_stock_plan"):
+                mr.from_stock_plan = 1                     # buys for stock on purpose: not blocked by free stock
+            for ln in lines:
+                uom = uoms.get(ln["item_code"])
+                row = {"item_code": ln["item_code"], "qty": ln["qty"], "schedule_date": prop["needed_by"], "project": project,
+                       "uom": uom, "stock_uom": uom, "conversion_factor": 1,
+                       "warehouse": _warehouse_for(ln.get("for_item") or ln["item_code"], comp, settings)}
+                if ln.get("bom_no"):
+                    row["bom_no"] = ln["bom_no"]
+                if _has("Material Request Item", "for_project"):
+                    row["for_project"] = project
+                mr.append("items", row)
+            mr.insert()
+            made_mr.append({"name": mr.name, "kind": kind, "lines": len(lines)})
     # Time and Action plan: built from the same proposal; a failure never stops Create
     try:
         from pranera_planning.ta import build_from_proposal

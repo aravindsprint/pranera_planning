@@ -15,7 +15,7 @@ SCALARS = {
     "history_days": cint, "near_margin": flt, "default_safety_days": flt, "default_cover_days": flt,
     "default_round_to": flt, "lead_history_months": cint, "use_learned_lead_days": cint,
     "include_bought_lead_days": cint, "default_warehouse": str, "stock_project_period": str,
-    "stock_project_pattern": str, "no_default_supplier": str, "item_rows_pick": str, "lead_time_check": str, "lead_time_grace_days": cint,
+    "stock_project_pattern": str, "no_default_supplier": str, "item_rows_pick": str, "request_grouping": str, "lead_time_check": str, "lead_time_grace_days": cint,
 }
 TABLES = {
     "group_rules": ["item_group", "demand_basis", "safety_days", "cover_days", "round_to", "bought_lead_days"],
@@ -32,6 +32,7 @@ def _out(doc):
     return {
         **{k: doc.get(k) for k in SCALARS},
         "item_rows_pick": doc.get("item_rows_pick") or "Slowest",
+        "request_grouping": doc.get("request_grouping") or "One per item",
         "group_rules": [{f: r.get(f) for f in TABLES["group_rules"]} for r in doc.group_rules],
         "stage_leads": [{f: r.get(f) for f in TABLES["stage_leads"] + LEARNED} for r in doc.stage_leads],
         "seasons": [{f: r.get(f) for f in TABLES["seasons"]} for r in doc.seasons],

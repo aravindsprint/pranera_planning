@@ -119,7 +119,9 @@
 
           <div class="stats">
             <div class="stat"><div class="stat__v">{{ fmt(p.totals.own) }}</div><div class="stat__l">Own stock used</div></div>
-            <div class="stat"><div class="stat__v">{{ fmt(p.totals.coming) }}</div><div class="stat__l">Already coming</div></div>
+            <div class="stat"><div class="stat__v">{{ fmt(p.totals.coming) }}</div><div class="stat__l">Already coming</div>
+              <div v-if="p.totals.coming_lines && p.totals.coming_lines.length > 1" class="sub">
+                {{ p.totals.coming_lines.map((c) => `${c.stage || c.item} ${fmt(c.qty)}`).join(' · ') }}</div></div>
             <div class="stat warn"><div class="stat__v">{{ fmt(p.totals.reserve) }}</div><div class="stat__l">Reserved from other projects</div></div>
             <div class="stat dark"><div class="stat__v">{{ p.totals.requests }}</div><div class="stat__l">draft requests · {{ p.totals.request_lines }} lines</div></div>
           </div>

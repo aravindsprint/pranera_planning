@@ -28,7 +28,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, flt, getdate, today
 
-from pranera_planning.plan_math import apply_picks, lot_key, lines_to_save, allocate_lots, build_plan, scenario_rules
+from pranera_planning.plan_math import coming_total, apply_picks, lot_key, lines_to_save, allocate_lots, build_plan, scenario_rules
 from pranera_planning.reorder import _top_group, load_settings
 from pranera_planning.reorder_math import (
     DEFAULT_STOCK_PATTERN, deepest, next_seq, normalise_family, period_of, stock_project_name,
@@ -448,6 +448,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                 requests["Purchase"].append({"item_code": code, "qty": r["request"]})
 
         levels.append({**{k: r[k] for k in ("item", "need", "own", "coming", "reserve", "short", "request", "made", "depth")},
+                       "feeds_coming": r.get("feeds_coming", 0.0),
                        "how": [t for _q, t in r["how"]], "item_name": it.get("item_name"), "uom": it.get("stock_uom"),
                        "coming_all": flt((data.get(code) or {}).get("coming")),
                        "stage": stage or ("Bought" if not r["made"] else ""), "route": route, "stage_days": days_route,
@@ -496,7 +497,9 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
             "moves": [{"item": c, "qty": q} for c, q in moved.items()],
             "stock_before": {ln["item"]: flt((data.get(ln["item"]) or {}).get("own")) + flt((data.get(ln["item"]) or {}).get("coming"))
                              for ln in lines},
-            "totals": {"own": sum(l["own"] for l in levels), "coming": sum(l["coming"] for l in levels),
+            "totals": {"own": sum(l["own"] for l in levels), "coming": coming_total(levels),
+                       "coming_lines": [{"item": l["item"], "stage": l["stage"], "qty": l["coming"], "depth": l["depth"]}
+                                        for l in levels if l["coming"] > EPS],
                        "reserve": sum(l["reserve"] for l in levels),
                        "requests": (sum(len(v) for v in requests.values()) if per_item_requests(settings)
                                     else sum(1 for k in requests if requests[k])),

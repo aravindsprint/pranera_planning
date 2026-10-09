@@ -180,5 +180,11 @@ class TestComingOpen(unittest.TestCase):
         self.assertEqual((lv["GKF"]["own"], lv["GKF"]["request"]), (1500, 0))           # held greige covers dyeing
         self.assertIn("1,500 coming", lv["DKF"]["how"][0][1])
 
+    def test_coming_is_counted_once(self):
+        from pranera_planning.plan_math import coming_total
+        lv = self.plan(1500)
+        self.assertEqual(lv["DKF"]["feeds_coming"], 1500)
+        self.assertEqual(coming_total(list(lv.values())), 1500)        # not 3,000
+
     def test_coming_already_supplied_is_not_planned_again(self):
         self.assertEqual(sorted(self.plan(0)), ["SKF"])      # e.g. a Work Order with its material transferred

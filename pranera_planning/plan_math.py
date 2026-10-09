@@ -89,6 +89,7 @@ def build_plan(lines, items, rules):
                     todo.append(inp)
 
     depth = {c: 0 for c in asks}
+    feeds = {}                                          # input: qty asked for its parent's coming
     queue = sorted([c for c in seen if parents[c] == 0])
     done, levels = set(), []
     while len(done) < len(seen):
@@ -115,6 +116,8 @@ def build_plan(lines, items, rules):
         # yet still needs it: plan the level below for that too, so the stage stays visible
         coming_open = min(coming, float(it.get("coming_open") or 0))
         row["coming_open"] = coming_open
+        # the part of this level's coming that only goes into its parent's coming (not counted twice)
+        row["feeds_coming"] = min(coming, feeds.get(code, 0.0))
         if made(code):
             for inp, ratio in it["bom"]:
                 if inp == code:
@@ -126,6 +129,7 @@ def build_plan(lines, items, rules):
                     asks.setdefault(inp, []).append((q, f"{fmt(request)} × {fmt(ratio, 4)}", "need"))
                 if q_open > EPS:
                     asks.setdefault(inp, []).append((q_open, f"{fmt(coming_open)} coming × {fmt(ratio, 4)}", "need"))
+                    feeds[inp] = feeds.get(inp, 0.0) + q_open
                 depth[inp] = max(depth.get(inp, 0), row["depth"] + 1)
                 parents[inp] -= 1
                 if parents[inp] == 0:
@@ -211,3 +215,15 @@ def apply_picks(lots, picks):
         if take > EPS:
             out.append({**lot, "qty": take})
     return out, gone
+
+
+def coming_total(levels):
+    """What is already coming for the plan, without counting a level twice: a level's coming
+    counts only for the part that doesn't just go into its parent's coming — dyed fabric coming
+    for finished fabric that is itself coming is the same 1,500, not another 1,500."""
+    total = 0.0
+    for l in levels:
+        part = float(l.get("coming") or 0) - float(l.get("feeds_coming") or 0)
+        if part > EPS:
+            total += part
+    return round(total, 3)

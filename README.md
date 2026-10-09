@@ -478,3 +478,13 @@ coming still needs its input. The plan explodes the BOM for that part too (`plan
 `coming_open` in `plan_math.build_plan`), so the stages below stay in the plan, can be changed
 (route, BOM, lots) and get their Time and Action activities. Work Orders with material transferred,
 subcontracting orders and purchases are not exploded again.
+
+## Moving a stage from a Manufacture request to job work
+
+A plan level already covered by the project's own Manufacture request (e.g. dyeing requested
+in-house) can be moved to job work, in part or in full: switch the level to *Job work*, enter how
+much to move and *Apply*. The plan counts that much less as coming and raises it as a job-work
+Purchase request; on Create the Manufacture request is reduced by the same quantity
+(`mr_moves.py`): a draft is edited (an empty one deleted), a submitted one is cancelled and amended
+with the reduced line — only while nothing on it is a Work Order yet; otherwise reduce the Work
+Order instead.

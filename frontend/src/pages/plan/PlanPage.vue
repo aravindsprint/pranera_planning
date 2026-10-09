@@ -166,6 +166,17 @@
                         <button type="button" :class="{ on: r.route !== 'Job work' }" @click="setRoute(r.item, 'In-house')">In-house</button>
                         <button type="button" :class="{ on: r.route === 'Job work' }" @click="setRoute(r.item, 'Job work')">Job work</button>
                       </div>
+                      <div v-if="r.route === 'Job work' && (r.movable > 0 || r.moved > 0)" class="move">
+                        <label class="sub" :for="`mv-${r.item}`">Move from the Manufacture request to job work</label>
+                        <div class="move__row">
+                          <input :id="`mv-${r.item}`" v-model.number="moveQty[r.item]" type="number" min="0" :max="r.movable" step="any"
+                                 class="form-input mv" :placeholder="fmt(r.movable)" />
+                          <span class="sub">of {{ fmt(r.movable) }} {{ r.uom }}</span>
+                          <button type="button" class="linkish" @click="moveAll(r)">all</button>
+                          <button type="button" class="btn btn-outline sm" @click="applyMove(r)">Apply</button>
+                        </div>
+                        <div v-if="r.moved" class="sub picked">{{ fmt(r.moved) }} moved: on Create the Manufacture request is reduced by it</div>
+                      </div>
                       <div v-if="!r.request" class="sub">nothing to make</div>
                       <div v-else-if="r.route === 'Job work'" class="sub">
                         Purchase request ·
@@ -227,6 +238,7 @@
         <div v-for="(c, ci) in created" :key="ci" class="card">
           <div class="card__title">{{ c.project_name || c.project }} · created</div>
           <p class="sub">{{ c.reservations.length }} reservations · {{ c.requests.length }} draft Material Requests — review and submit them.</p>
+          <p v-for="n in c.moved || []" :key="n" class="sub picked">{{ n }}</p>
           <div class="kv" v-for="m in c.requests" :key="m.name">
             <span><a :href="deskUrl(`/app/material-request/${m.name}`)" target="_blank">{{ m.name }}</a> · {{ m.kind === 'Job work' ? 'Purchase · job work' : m.kind }}</span>
             <b>{{ m.lines }} {{ m.lines === 1 ? 'line' : 'lines' }}</b>
@@ -296,7 +308,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['created'])
 
-const blank = () => ({ order_type: MTO, project: '', sales_order: '', needed_by: '', lines: [{ item: '', qty: null, mode: 'need' }], routes: {}, services: {}, boms: {}, picks: {} })
+const blank = () => ({ order_type: MTO, project: '', sales_order: '', needed_by: '', lines: [{ item: '', qty: null, mode: 'need' }], routes: {}, services: {}, boms: {}, picks: {}, moves: {} })
 const form = reactive(blank())
 const step = ref('start')
 const proposals = ref([])
@@ -349,7 +361,7 @@ function payload() {
     sales_order: form.order_type === MTO ? form.sales_order : null, needed_by: form.needed_by || null,
     lines: form.lines.filter((l) => l.item && l.qty > 0)
       .map((l) => ({ item: l.item, qty: l.qty, mode: form.order_type === MTS ? l.mode : 'need', label: l.label })),
-    routes: form.routes, services: form.services, boms: form.boms, picks: form.picks,
+    routes: form.routes, services: form.services, boms: form.boms, picks: form.picks, moves: form.moves,
   }
 }
 async function check() {
@@ -364,7 +376,20 @@ async function check() {
     busy.value = false
   }
 }
-function setRoute(item, r) { form.routes[item] = r; check() }
+function setRoute(item, r) {
+  form.routes[item] = r
+  if (r !== 'Job work') delete form.moves[item]           // a move only goes with the job-work route
+  check()
+}
+// Quantity moved from the project's Manufacture request to job work (on Create the request is reduced)
+const moveQty = reactive({})
+function moveAll(r) { moveQty[r.item] = r.movable }
+function applyMove(r) {
+  const q = Math.max(0, Math.min(Number(moveQty[r.item]) || 0, r.movable))
+  if (q > 0) form.moves[r.item] = q
+  else delete form.moves[r.item]
+  check()
+}
 
 // Lot picker: which other projects' free stock to borrow, and how much from each
 const picker = ref(null)
@@ -479,6 +504,10 @@ onMounted(() => {
 .badge-muted { background: var(--slate-100); color: var(--slate-500); }
 .linkish { border: 0; background: none; padding: 0; margin-top: 2px; color: var(--primary); text-decoration: underline; cursor: pointer; font-size: 12px; }
 .picked { color: #1d4ed8; }
+.move { margin: 6px 0; padding: 6px 8px; border: 1px dashed var(--slate-200); border-radius: 6px; }
+.move__row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.form-input.mv { width: 100px; text-align: right; }
+.btn.sm { padding: 3px 10px; font-size: 12px; }
 .late { color: #b91c1c; font-weight: 600; }
 .pk-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
 .pk { background: #fff; border-radius: 12px; width: min(920px, 100%); max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }

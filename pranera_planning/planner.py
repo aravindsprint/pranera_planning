@@ -347,6 +347,16 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     held = held_for(project, codes)
     come, come_src = coming(project, codes)
     come_open = coming_open(project, [c for c in codes if c in boms]) if rules["explode"] else {}
+    # quantity the user moves from the project's Manufacture requests to job work (mr_moves.py)
+    from pranera_planning.mr_moves import movable
+    can_move = movable(project, [c for c in codes if c in boms]) if rules["explode"] and project else {}
+    moved = {}
+    for code, q in (payload.get("moves") or {}).items():
+        q = min(flt(q), flt(can_move.get(code)), flt(come.get(code)))
+        if q > EPS and (payload.get("routes") or {}).get(code) == "Job work":
+            moved[code] = q
+            come[code] = flt(come.get(code)) - q
+            come_open[code] = max(0.0, flt(come_open.get(code)) - q)
 
     lot_projects = {l["project"] for ls in lots.values() for l in ls if l["project"]}
     kinds = dict(frappe.get_all("Project", filters={"name": ["in", list(lot_projects)]},
@@ -449,6 +459,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "coming_from": come_src.get(code, []), "held": held_here,
                        "reserve_from": sorted({l["project"] or "old stock (no project)" for l in allocate_lots(borrow_lots[code], r["reserve"])[0]})[:3]
                        if r["reserve"] > EPS else [],
+                       "movable": flt(can_move.get(code)) if r["made"] else 0.0, "moved": moved.get(code, 0.0),
                        "lots_picked": code in picked_by_user,
                        "lots": [{"key": lot_key(l), "project": l["project"], "batch_no": l["batch_no"], "warehouse": l["warehouse"],
                                  "roll_no": l.get("roll_no") or "", "free": round(l["qty"], 3)} for l in all_borrow.get(code, [])],
@@ -482,6 +493,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     return {"project": proj, "order_type": order_type, "rules": rules, "needed_by": needed_by,
             "sales_order": payload.get("sales_order") if order_type == MTO else None,
             "lines": lines, "levels": levels, "reservations": reservations, "requests": requests, "warnings": warnings,
+            "moves": [{"item": c, "qty": q} for c, q in moved.items()],
             "stock_before": {ln["item"]: flt((data.get(ln["item"]) or {}).get("own")) + flt((data.get(ln["item"]) or {}).get("coming"))
                              for ln in lines},
             "totals": {"own": sum(l["own"] for l in levels), "coming": sum(l["coming"] for l in levels),
@@ -567,6 +579,12 @@ def _create_one(prop):
         doc.insert()
         made_res.append(doc.name)
 
+    # quantity moved to job work: take it off the Manufacture requests first
+    from pranera_planning.mr_moves import reduce
+    moved_notes = []
+    for mv in prop.get("moves") or []:
+        moved_notes += reduce(project, mv["item"], mv["qty"])
+
     made_mr = []
     kinds = {"Manufacture": "Manufacture", "Job work": "Purchase", "Purchase": "Purchase"}
     all_codes = {ln["item_code"] for lines in prop["requests"].values() for ln in lines}
@@ -598,4 +616,5 @@ def _create_one(prop):
         build_from_proposal(project, prop)
     except Exception:
         frappe.log_error(title=f"Time and Action plan not built for {project}")
-    return {"project": project, "project_name": proj.get("project_name"), "reservations": made_res, "requests": made_mr}
+    return {"project": project, "project_name": proj.get("project_name"), "reservations": made_res, "requests": made_mr,
+            "moved": moved_notes}

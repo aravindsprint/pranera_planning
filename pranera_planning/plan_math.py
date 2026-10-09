@@ -24,6 +24,9 @@ Per item, parents first (so an item needed in two places is added up before it's
 Plan line modes:
   need     deliver this qty, using stock first (made-to-order lines, and the levels below)
   top_up   bring the project's stock up to this level (own and coming count toward it)
+  coming_open  (per item) the part of the project's own coming that has no input yet —
+           Material Requests not yet made into orders, Work Orders whose material isn't
+           transferred: the level below is planned for it too, so the stage stays in the plan
   make     make / buy exactly this qty more — at its own level stock isn't taken off (the
            re-order report's suggestion already did that); the levels below still use stock
 """
@@ -108,14 +111,21 @@ def build_plan(lines, items, rules):
         row = {"item": code, "need": offset_need + fixed_need, "own": own, "coming": coming, "reserve": reserve,
                "short": short, "request": request, "made": made(code), "depth": depth.get(code, 0),
                "how": [(q, t) for q, t, _m in a], "inputs": []}
+        # what is coming from this project's own requests / orders that haven't had their input
+        # yet still needs it: plan the level below for that too, so the stage stays visible
+        coming_open = min(coming, float(it.get("coming_open") or 0))
+        row["coming_open"] = coming_open
         if made(code):
             for inp, ratio in it["bom"]:
                 if inp == code:
                     continue
                 q = request * float(ratio)
-                row["inputs"].append((inp, q))
+                q_open = coming_open * float(ratio)
+                row["inputs"].append((inp, q + q_open))
                 if q > EPS:
                     asks.setdefault(inp, []).append((q, f"{fmt(request)} × {fmt(ratio, 4)}", "need"))
+                if q_open > EPS:
+                    asks.setdefault(inp, []).append((q_open, f"{fmt(coming_open)} coming × {fmt(ratio, 4)}", "need"))
                 depth[inp] = max(depth.get(inp, 0), row["depth"] + 1)
                 parents[inp] -= 1
                 if parents[inp] == 0:

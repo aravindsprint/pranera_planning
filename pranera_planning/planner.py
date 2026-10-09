@@ -225,6 +225,32 @@ def coming(project, items):
     return qty, src
 
 
+def coming_open(project, items):
+    """{item: qty} of the project's own coming that still needs its input: Manufacture Material
+    Requests not yet made into Work Orders (drafts too), and open Work Orders' quantity whose
+    material isn't transferred yet (qty − the larger of produced and transferred). Job work and
+    purchases are left out: a subcontracting order's input is tracked by the subcontracting
+    order itself, and bought items have no input."""
+    out = defaultdict(float)
+    if not project or not items:
+        return out
+    v = {"p": project, "items": tuple(items)}
+    for item, q in frappe.db.sql(f"""SELECT production_item,
+            SUM(GREATEST(qty - GREATEST(produced_qty, IF(skip_transfer = 1, 0, material_transferred_for_manufacturing)), 0))
+            FROM `tabWork Order` WHERE docstatus = 1 AND status NOT IN {DONE} AND project = %(p)s
+            AND production_item IN %(items)s GROUP BY production_item""", v):
+        out[item] += flt(q)
+    proj = "(mri.project = %(p)s" + (" OR mri.for_project = %(p)s)" if _has("Material Request Item", "for_project") else ")")
+    for item, q in frappe.db.sql(f"""SELECT mri.item_code, SUM(GREATEST(mri.stock_qty - mri.ordered_qty, 0))
+            FROM `tabMaterial Request Item` mri
+            JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mr.docstatus < 2
+             AND IFNULL(mr.status, '') NOT IN ('Stopped', 'Cancelled', 'Ordered', 'Transferred', 'Issued', 'Received')
+             AND mr.material_request_type = 'Manufacture'
+            WHERE {proj} AND mri.item_code IN %(items)s GROUP BY mri.item_code""", v):
+        out[item] += flt(q)
+    return out
+
+
 def last_service(items):
     """{item: the job-work service its most recent Purchase Material Request bought against
     one of its BOMs} — e.g. which fabrics go to the stenter and which to the dryer."""
@@ -320,6 +346,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     project = proj.get("project")
     held = held_for(project, codes)
     come, come_src = coming(project, codes)
+    come_open = coming_open(project, [c for c in codes if c in boms]) if rules["explode"] else {}
 
     lot_projects = {l["project"] for ls in lots.values() for l in ls if l["project"]}
     kinds = dict(frappe.get_all("Project", filters={"name": ["in", list(lot_projects)]},
@@ -356,7 +383,8 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                 pick_warnings.append(_("{0}: {1} chosen lot(s) are no longer free and were left out.").format(code, len(gone)))
         data[code] = {"made": made, "bom": rows.get(code, []), "round_to": round_to,
                       "own": sum(l["qty"] for l in own_lots[code]) + flt(held.get(code)),
-                      "coming": flt(come.get(code)), "borrowable": sum(l["qty"] for l in borrow_lots[code])}
+                      "coming": flt(come.get(code)), "coming_open": flt(come_open.get(code)),
+                      "borrowable": sum(l["qty"] for l in borrow_lots[code])}
 
     plan = build_plan(lines, data, rules)
     stage_rows = {(r.stage or "").strip().lower(): r for r in settings.stage_leads}

@@ -469,3 +469,12 @@ to stock, or an old project with no Order type — and old stock that came under
 Reservation's source project is now optional: empty means old stock with no project
 (`ProjectStockReservation.validate_batch`). The request check's message sends the user back to
 re-plan, which reserves that stock and asks only for the rest.
+
+## Levels below what is already coming
+
+When a level is covered by the project's own coming — a Manufacture Material Request not yet
+made into a Work Order (drafts too), or a Work Order whose material isn't transferred yet — that
+coming still needs its input. The plan explodes the BOM for that part too (`planner.coming_open`,
+`coming_open` in `plan_math.build_plan`), so the stages below stay in the plan, can be changed
+(route, BOM, lots) and get their Time and Action activities. Work Orders with material transferred,
+subcontracting orders and purchases are not exploded again.

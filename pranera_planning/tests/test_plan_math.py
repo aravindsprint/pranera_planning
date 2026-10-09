@@ -158,3 +158,27 @@ class TestPicks(unittest.TestCase):
                                             {"key": "B9|Stores|", "qty": 5}])
         self.assertEqual([(l["batch_no"], l["qty"]) for l in got], [("B2", 600.0), ("B1", 975.0)])
         self.assertEqual(gone, ["B9|Stores|"])
+
+
+class TestComingOpen(unittest.TestCase):
+    """SAL-ORD-2026-00004: finished 1,500 is coming on a draft Manufacture request (with dyed 1,500);
+    greige 1,500 is already held. The dyed and greige levels must stay in the plan."""
+
+    def plan(self, coming_open):
+        from pranera_planning.plan_math import build_plan, scenario_rules
+        items = {"SKF": {"bom": [("DKF", 1.0)], "made": True, "coming": 1500, "coming_open": coming_open},
+                 "DKF": {"bom": [("GKF", 1.0)], "made": True, "coming": 1500, "coming_open": 1500},
+                 "GKF": {"bom": [("YARN", 1.0)], "made": True, "own": 1500},
+                 "YARN": {}}
+        p = build_plan([{"item": "SKF", "qty": 1500, "mode": "need"}], items, scenario_rules("Production", "Made to order"))
+        return {r["item"]: r for r in p["levels"]}
+
+    def test_levels_below_what_is_coming_stay_in_the_plan(self):
+        lv = self.plan(1500)
+        self.assertEqual(sorted(lv), ["DKF", "GKF", "SKF"])
+        self.assertEqual((lv["DKF"]["need"], lv["DKF"]["coming"], lv["DKF"]["request"]), (1500, 1500, 0))
+        self.assertEqual((lv["GKF"]["own"], lv["GKF"]["request"]), (1500, 0))           # held greige covers dyeing
+        self.assertIn("1,500 coming", lv["DKF"]["how"][0][1])
+
+    def test_coming_already_supplied_is_not_planned_again(self):
+        self.assertEqual(sorted(self.plan(0)), ["SKF"])      # e.g. a Work Order with its material transferred

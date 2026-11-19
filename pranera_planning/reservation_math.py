@@ -14,6 +14,17 @@ import re
 
 EPS = 1e-6
 
+# Reserved Qty is stored to 3 decimals, so reserving a lot of 9.8437 leaves up to 0.0005 of it
+# "free". Free stock below this step can't be reserved and is not counted anywhere (plan,
+# free-stock check) — otherwise 28 such crumbs block a request that the plan sized exactly.
+RESERVE_STEP = 0.001
+
+
+def reservable(qty):
+    """qty, or 0 when it is below what a reservation can hold (RESERVE_STEP)."""
+    qty = float(qty or 0)
+    return qty if qty + EPS >= RESERVE_STEP else 0.0
+
 
 def same_project(a, b):
     """Project names compare case-insensitively (the DB does, and batch names are inconsistent)."""

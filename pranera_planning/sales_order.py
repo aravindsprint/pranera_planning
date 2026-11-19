@@ -4,7 +4,8 @@ Sales Order › Made to order (a tick box) decides it; orders without the tick �
 Shopify and Unicommerce orders — are left exactly as they are.
 
 On submit, with the tick:
-  - Project left empty → a new Production, made-to-order project is created, named after the
+  - Project left empty → a new made-to-order project is created — Production when any ordered item
+    is made (has an active BOM), Purchase when every item is bought — named after the
     Sales Order, with its Customer, Sales Order and delivery date, and the Sales Order's Project
     is set to it (linked both ways).
   - Project chosen → that project is linked: marked made to order, given this Sales Order (and the
@@ -62,9 +63,18 @@ def on_submit(doc, method=None):
                     title=_("Made-to-order project"), indicator="green")
 
 
+def project_type_for(doc):
+    """Production when the order has an item made here (an active, submitted BOM), else Purchase."""
+    items = list({r.item_code for r in (doc.get("items") or []) if r.get("item_code")})
+    if items and not frappe.get_all("BOM", filters={"item": ["in", items], "is_active": 1, "docstatus": 1},
+                                    pluck="item", limit=1):
+        return "Purchase"
+    return "Production"
+
+
 def _create(doc):
     values = {
-        "doctype": "Project", "project_name": doc.name, "project_type": "Production", "status": "Open",
+        "doctype": "Project", "project_name": doc.name, "project_type": project_type_for(doc), "status": "Open",
         "company": doc.company, "customer": doc.customer, "sales_order": doc.name,
         "expected_end_date": doc.get("delivery_date"),
     }
@@ -90,7 +100,7 @@ def _link(project, doc):
     if not p.customer:
         updates["customer"] = doc.customer
     if not p.project_type:
-        updates["project_type"] = "Production"
+        updates["project_type"] = project_type_for(doc)
     if "planning_order_type" in p and p.planning_order_type != MTO:
         updates["planning_order_type"] = MTO
     if p.status == "Cancelled":

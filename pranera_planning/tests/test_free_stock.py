@@ -67,6 +67,38 @@ class TestFreeStock(unittest.TestCase):
         self.assertEqual(counted["elsewhere"], 0.0)          # but a purchase isn't expected to use it
         self.assertEqual(counted["own"], 200.0)
 
+    def test_crumbs_below_what_a_reservation_can_hold_are_not_free(self):
+        # Reserved Qty keeps 3 decimals: reserving a 975.0004 lot leaves 0.0004 behind.
+        self.R.get_stock_locations = lambda batches: {"5678": {"Stores - PSS": {"available": 0.0004, "rolls": {}}},
+                                                      "9999": {"Stores - PSS": {"available": 100.0, "rolls": {}}}}
+        y = self.R.free_stock(["YRFPP090/GREIGE"], for_project="25PROD001")["YRFPP090/GREIGE"]
+        self.assertEqual((y["own"], y["elsewhere"]), (0.0, 0.0))
+
+    def test_a_project_plans_request_is_checked_against_what_the_plan_could_reserve(self):
+        import types
+        self.settings()
+        fake = types.ModuleType("pranera_planning.planner")
+        seen = {}
+
+        def reservable_summary(items, project):
+            seen["args"] = (sorted(items), project)
+            return {"YRFPP090/GREIGE": {"own": 0.0, "elsewhere": 0.0, "unassigned": 0.0, "projects": [], "more_projects": 0}}
+        fake.reservable_summary = reservable_summary
+        saved = sys.modules.get("pranera_planning.planner")
+        sys.modules["pranera_planning.planner"] = fake
+        try:
+            d = self.request()
+            d.from_project_plan = 1
+            self.assertEqual(self.run_check(d, "before_submit"), "allowed")
+            self.assertEqual(seen["args"], (["YRFPP090/GREIGE"], "25PROD001"))
+            d = self.request()                              # the same request typed by hand is still checked in full
+            self.assertEqual(self.run_check(d, "before_submit"), "blocked")
+        finally:
+            if saved is None:
+                sys.modules.pop("pranera_planning.planner", None)
+            else:
+                sys.modules["pranera_planning.planner"] = saved
+
     def request(self, qty=2000):
         comments = []
         d = Doc(material_request_type="Purchase", project=None, reservation_override_reason=None, items=[
@@ -106,7 +138,7 @@ class TestFreeStock(unittest.TestCase):
         self.assertEqual(self.frappe.logged, [])
         title, msg = self.frappe.messages[0]
         self.assertIn("instead of buying", title)
-        self.assertIn('href="/planning-app/project-stock-reservation?project=25PUR001"', msg)
+        self.assertIn('href="/planning-app/project-planning?tab=stock&project=25PUR001"', msg)
         self.assertIn("at most <b>825 Kgs</b>", msg)
         self.assertIn("already free under this project", msg)
         self.assertNotIn("DRYER", msg)

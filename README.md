@@ -126,9 +126,13 @@ whose stock is no longer at its location is not insisted on. Site config
 **Free stock before buying.** A Purchase Material Request may ask, per batch-tracked item and
 project, for at most *requested − free stock*: stock of that item free to reserve for that project
 right now (its own free stock, other projects' purchased stock, stock with no project — not stock
-produced for another project). Reserve the free stock on the Stock Reservation page first; it then
-stops counting as free. Saving shows an orange notice with the free stock (linked to its projects)
-and the most the request can ask for; submitting is refused in Block mode.
+produced for another project). Reserve the free stock on the Stock & reservations tab of Project
+Planning first; it then stops counting as free. Saving shows an orange notice with the free stock
+(linked to its projects) and the most the request can ask for; submitting is refused in Block mode.
+Leftovers under 0.001 (what a 3-decimal reservation can't hold) never count. A request made by a
+made-to-order plan (*From a project plan*) is measured only against stock that plan could reserve —
+its own free stock and other projects' purchased, numbered stock — because the plan already
+reserved all of it before asking to buy the rest.
 
 Configured in **Stock Reservation Settings** (desk):
 - *Free stock check*: Block (default) / Warn / Off.

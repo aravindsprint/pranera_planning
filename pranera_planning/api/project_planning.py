@@ -123,7 +123,8 @@ def get_overview(project):
     # ── totals and requests ────────────────────────────────────────────────────
     mine = frappe.get_all("Project Stock Reservation", filters={"status": "Active", "production_project": project},
                           fields=["name", "batch_no"])
-    held_total = sum(flt(v) for v in _remaining(mine).values())
+    rem_mine = _remaining(mine)               # covers every reservation on those batches, other projects' too
+    held_total = sum(flt(rem_mine.get(r.name)) for r in mine)
     requests = []
     for mr in frappe.db.sql("""SELECT DISTINCT mr.name, mr.material_request_type, mr.docstatus, mr.status, mr.transaction_date
             FROM `tabMaterial Request` mr JOIN `tabMaterial Request Item` mri ON mri.parent = mr.name
@@ -145,8 +146,13 @@ def get_overview(project):
     if open_items:
         come_all, _s = planner.coming(project, open_items)
         groups = {i.name: i.item_group for i in frappe.get_all("Item", filters={"name": ["in", open_items]}, fields=["name", "item_group"])}
+        # A stage's Planned is what it will produce: made items only. A bought input of the same
+        # item group (greige for a dyeing order) would otherwise be counted as that stage's output too.
+        made = set(frappe.get_all("BOM", filters={"item": ["in", open_items], "is_active": 1, "docstatus": 1},
+                                  pluck="item"))
         for item, q in come_all.items():
-            planned[stage_of(item, groups.get(item)) or ""] += flt(q)
+            if item in made:
+                planned[stage_of(item, groups.get(item)) or ""] += flt(q)
     seen = set()
     for st in stages:
         label = str(st.get("stage") or "").split(" (")[0]

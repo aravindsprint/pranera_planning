@@ -36,7 +36,7 @@ Open `https://erp.pranera.in/planning-app`, hard refresh (Cmd+Shift+R), and chec
 that Home shows "Connected as <you>".
 
 Notes:
-- `www/planning-app.py` appends `?v=<mtime>` to `index.js`/`index.css`, so browsers
+- `www/planning_app.py` (underscore: Frappe loads a page's Python from the route with `-` turned into `_`) appends `?v=<mtime>` to `index.js`/`index.css`, so browsers
   fetch the new bundle after each deploy. Don't remove it.
 - There is deliberately no service worker / PWA. Add one only if the planning app
   needs offline use; the knit app's cache issues came from that layer.

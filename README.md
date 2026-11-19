@@ -42,7 +42,7 @@ frontend/src/
   pages/_template/   copy this to start a page (not routed)
 pranera_planning/
   hooks.py           /planning-app route rule, apps-screen tile
-  www/planning-app.* the page Frappe serves (injects CSRF token, cache-busts the bundle)
+  www/planning-app.html + planning_app.py  the page Frappe serves (injects CSRF token, cache-busts the bundle)
   planning/          module folder: DocTypes go in planning/doctype/<name>/
   public/planning_app/   built frontend (committed)
 ```

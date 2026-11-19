@@ -58,14 +58,17 @@ def create_plan(payload):
 # ── long runs: preview and create as background jobs ──────────────────────────
 # A deep BOM (finishing → dyeing → knitting → yarn, fabrics with thousands of lots) can take
 # longer than the web server's request timeout, which then answers 504 and throws the work
-# away. start() runs the work in the "long" queue and the page polls job_status(); when no
-# background worker is running it falls back to doing the work in the request, as before.
-JOB_TTL = 3600
+# away. start() queues the work and the page polls job_status(); when no background worker is
+# running it falls back to doing the work in the request, as before.
+#
+# The job's state and result are read from the queue itself (RQ keeps them in redis-queue for
+# rq_results_ttl, 10 minutes by default), not from the cache: redis-cache evicts keys under
+# memory pressure, which lost running jobs ("This plan run has expired") on erptest.
+# "default" queue: every worker takes it, so a plan doesn't wait behind long index rebuilds.
+JOB_QUEUE = "default"
+JOB_TIMEOUT = 1800
 JOB_KINDS = ("preview", "create")
-
-
-def _job_key(job):
-    return f"pranera_planning:plan_job:{job}"
+JOB_PREFIX = "pranera-plan-"
 
 
 def _workers_running():
@@ -91,43 +94,63 @@ def start(kind, payload):
     if not _workers_running():
         return {"status": "done", "result": _run(kind, payload)}
     job = frappe.generate_hash(length=16)
-    frappe.cache().set_value(_job_key(job), {"status": "queued", "user": frappe.session.user}, expires_in_sec=JOB_TTL)
-    frappe.enqueue("pranera_planning.api.plan.run_job", queue="long", timeout=1800, job_id=f"pranera-plan-{job}",
-                   job=job, kind=kind, payload=payload)
+    frappe.enqueue("pranera_planning.api.plan.run_job", queue=JOB_QUEUE, timeout=JOB_TIMEOUT,
+                   job_id=JOB_PREFIX + job, kind=kind, payload=payload)
     return {"status": "queued", "job": job}
 
 
-def run_job(job, kind, payload):
-    """Background job behind start(). A create is all or nothing: committed only when every
-    reservation and request was made."""
-    key = _job_key(job)
-    state = frappe.cache().get_value(key) or {"user": frappe.session.user}
-    frappe.cache().set_value(key, {**state, "status": "running"}, expires_in_sec=JOB_TTL)
+def run_job(kind, payload):
+    """Background job behind start(). Returns {"ok": True, "result"} or {"ok": False, "error"}
+    — an error is returned, not raised, so the page gets a readable message. A create is all
+    or nothing: committed only when every reservation and request was made."""
     try:
         result = _run(kind, payload)
         if kind == "create":
             frappe.db.commit()
-        state.update(status="done", result=result)
+        return {"ok": True, "result": result}
     except Exception as e:
         frappe.db.rollback()
         if isinstance(e, frappe.ValidationError):
-            message = frappe.utils.strip_html(str(e)) or _("The plan could not be made.")
-        else:
-            frappe.log_error(title=f"Plan {kind} failed")
-            message = _("The plan could not be made: {0}. Details are in the Error Log.").format(type(e).__name__)
-        state.update(status="failed", error=message)
-    frappe.cache().set_value(key, state, expires_in_sec=JOB_TTL)
+            return {"ok": False, "error": frappe.utils.strip_html(str(e)) or _("The plan could not be made.")}
+        frappe.log_error(title=f"Plan {kind} failed")
+        return {"ok": False, "error": _("The plan could not be made: {0}. Details are in the Error Log.").format(type(e).__name__)}
+
+
+def job_state(job):
+    """(status, returned) of an RQ job: status is queued | running | done | failed | gone."""
+    from frappe.utils.background_jobs import get_job
+    rq_job = get_job(JOB_PREFIX + job)
+    if not rq_job:
+        return "gone", None, None
+    owner = (rq_job.kwargs or {}).get("user")
+    status = rq_job.get_status()                          # JobStatus is a str Enum: compare its value
+    status = str(getattr(status, "value", status) or "")
+    if status in ("queued", "deferred", "scheduled"):
+        return "queued", None, owner
+    if status == "started":
+        return "running", None, owner
+    if status == "finished":
+        returned = rq_job.return_value() if callable(getattr(rq_job, "return_value", None)) else rq_job.result
+        return "done", returned, owner
+    return "failed", None, owner                          # failed, stopped, canceled
 
 
 @frappe.whitelist()
 def job_status(job):
     """{"status": "queued" | "running" | "done" | "failed", "result"?, "error"?} of your own job."""
-    state = frappe.cache().get_value(_job_key(job))
-    if not state:
-        frappe.throw(_("This plan run has expired. Run it again."))
-    if state.get("user") != frappe.session.user:
+    status, returned, owner = job_state(job)
+    if status == "gone":
+        frappe.throw(_("This plan run is no longer known (results are kept 10 minutes). Run it again."))
+    if owner and owner != frappe.session.user:
         frappe.throw(_("Not your plan run."), frappe.PermissionError)
-    return {k: state.get(k) for k in ("status", "result", "error") if k in state}
+    if status == "done":
+        returned = returned or {}
+        if returned.get("ok"):
+            return {"status": "done", "result": returned.get("result")}
+        return {"status": "failed", "error": returned.get("error") or _("The plan could not be made.")}
+    if status == "failed":
+        return {"status": "failed", "error": _("The plan run stopped unexpectedly. Details are in the Error Log / RQ Job list.")}
+    return {"status": status}
 
 
 @frappe.whitelist()

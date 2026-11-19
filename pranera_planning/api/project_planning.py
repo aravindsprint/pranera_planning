@@ -9,7 +9,7 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning import planner
-from pranera_planning.reservation import EPS, get_reservation_state, same_project, stage_of
+from pranera_planning.reservation import EPS, get_reservation_state, project_sco_items, same_project, stage_of
 
 MTS, MTO = planner.MTS, planner.MTO
 
@@ -61,10 +61,11 @@ def _open_items(project):
         JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mr.docstatus < 2 WHERE mri.project = %s""", project))
     items |= set(frappe.db.sql_list("""SELECT DISTINCT production_item FROM `tabWork Order`
         WHERE docstatus = 1 AND project = %s""", project))
-    items |= set(frappe.db.sql_list("""SELECT DISTINCT soi.item_code FROM `tabSubcontracting Order Item` soi
-        JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1
-        LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
-        WHERE soi.project = %(p)s OR poi.project = %(p)s""", {"p": project}))
+    sco_items = project_sco_items(project)
+    if sco_items:
+        items |= set(frappe.db.sql_list("""SELECT DISTINCT soi.item_code FROM `tabSubcontracting Order Item` soi
+            JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1
+            WHERE soi.name IN %(i)s""", {"i": sco_items}))
     return items
 
 

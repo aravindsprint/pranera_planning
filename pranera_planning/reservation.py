@@ -372,6 +372,18 @@ def get_produced_owners(batch_nos):
     return {b: next(iter(ps)) for b, ps in seen.items() if len(ps) == 1 and next(iter(ps))}
 
 
+def project_sco_items(project):
+    """Names of the Subcontracting Order Items of `project`: their own project, or their
+    Purchase Order line's. Two indexed lookups — "soi.project = X OR poi.project = X" in one
+    query stops MariaDB using either index and scans every subcontracting line."""
+    return tuple(frappe.db.sql_list(
+        """SELECT name FROM `tabSubcontracting Order Item` WHERE project = %(p)s
+           UNION
+           SELECT soi.name FROM `tabPurchase Order Item` poi
+           JOIN `tabSubcontracting Order Item` soi ON soi.purchase_order_item = poi.name
+           WHERE poi.project = %(p)s""", {"p": project}))
+
+
 def get_produced_batches(project):
     """Batches produced for `project`: [{item_code, item_name, item_group, stock_uom, batch_no,
     produced_qty, made_by}]. Made by its Work Orders (Manufacture) or its Subcontracting
@@ -389,12 +401,7 @@ def get_produced_batches(project):
             """SELECT name FROM `tabStock Entry` WHERE docstatus = 1 AND purpose = 'Manufacture'
                AND work_order IN %(wos)s""", {"wos": tuple(wos)},
         ))
-    sco_items = frappe.db.sql_list(
-        """SELECT soi.name FROM `tabSubcontracting Order Item` soi
-           LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
-           WHERE soi.project = %(p)s OR poi.project = %(p)s""",
-        {"p": project},
-    )
+    sco_items = project_sco_items(project)
     receipt_items = set(frappe.db.sql_list(
         "SELECT name FROM `tabSubcontracting Receipt Item` WHERE project = %s", project,
     ))

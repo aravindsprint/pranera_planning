@@ -7,7 +7,7 @@ from frappe.utils import flt
 
 from pranera_planning.reservation import (
     batch_items, free_stock,
-    get_batch_operations, get_elsewhere_qty, get_issue_lines, get_produced_batches,
+    get_batch_operations, get_elsewhere_qty, get_issue_lines, get_produced_batches, project_sco_items,
     get_reservation_state, reservations_at, roll_tracked_items, stage_of, stage_rank,
 )
 from pranera_planning.reservation_math import EPS, location_summary, same_project
@@ -285,15 +285,15 @@ def _order_flow(project):
                 _add_flow(f, r.stock_uom == w.stock_uom, r.stock_uom, max(t, c) - ret,
                           max(0.0, t - c - ret) if open_order else 0.0)
 
+    sco_items = project_sco_items(project)
     scos = frappe.db.sql(
         """SELECT soi.name, soi.parent, soi.item_code, sco.status, i.item_group, i.stock_uom
            FROM `tabSubcontracting Order Item` soi
            JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1
            JOIN `tabItem` i ON i.name = soi.item_code
-           LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
-           WHERE soi.project = %(p)s OR poi.project = %(p)s""",
-        {"p": project}, as_dict=True,
-    )
+           WHERE soi.name IN %(i)s""",
+        {"i": sco_items}, as_dict=True,
+    ) if sco_items else []
     if scos:
         supplied = defaultdict(list)
         for r in frappe.db.sql(

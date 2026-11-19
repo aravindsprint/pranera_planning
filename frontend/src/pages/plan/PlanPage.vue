@@ -336,7 +336,9 @@ async function check() {
   busy.value = true
   error.value = ''
   try {
-    proposals.value = await runPlanStep('preview')
+    // Preview only reads and returns in seconds in the request; on erptest the same preview took
+    // minutes in a background worker. Create (writes, can be long) stays a background job.
+    proposals.value = await callMessage('pranera_planning.api.plan.preview', { payload: payload() })
     step.value = 'proposal'
   } catch (e) {
     error.value = e.message

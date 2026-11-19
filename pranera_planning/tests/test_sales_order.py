@@ -156,6 +156,40 @@ class TestMadeToOrderProject(unittest.TestCase):
         self.assertEqual(self.projects["SAL-ORD-2026-00012"].status, "Open")
         self.assertIn("reservations, Material Requests", self.comments[-1][1])
 
+    def test_cancelling_releases_reservations_nothing_was_issued_against(self):
+        import types
+        d = self.order()
+        self.so.on_submit(d)
+        self.f.get_all = lambda doctype, filters=None, **kw: (
+            [_dict(name="R1", batch_no="B1"), _dict(name="R2", batch_no="B1")] if doctype == "Project Stock Reservation" else [])
+        fake = types.ModuleType("pranera_planning.reservation")
+        fake.get_reservation_state = lambda batches: {"B1": {"reservations": [{"name": "R1", "issued_qty": 0.0},
+                                                                              {"name": "R2", "issued_qty": 12.5}]}}
+        saved = sys.modules.get("pranera_planning.reservation")
+        sys.modules["pranera_planning.reservation"] = fake
+        released = {}
+        project_set = self.f.db.set_value
+
+        def set_value(doctype, name, field, value=None, **kw):
+            if doctype == "Project Stock Reservation":
+                released[name] = field
+            else:
+                project_set(doctype, name, field, value, **kw)
+        self.f.db.set_value = set_value
+        self.f.utils.now_datetime = lambda: "2026-11-19 18:00:00"
+        try:
+            self.used = {"Project Stock Reservation": True}          # R2 stays Active: still in use
+            self.so.on_cancel(d)
+        finally:
+            if saved is None:
+                sys.modules.pop("pranera_planning.reservation", None)
+            else:
+                sys.modules["pranera_planning.reservation"] = saved
+        self.assertEqual(list(released), ["R1"])
+        self.assertEqual(released["R1"]["status"], "Released")
+        self.assertTrue(any("1 reservation(s) released; 1 kept" in c[1] for c in self.comments))
+        self.assertEqual(self.projects["SAL-ORD-2026-00012"].status, "Open")
+
 
 if __name__ == "__main__":
     unittest.main()

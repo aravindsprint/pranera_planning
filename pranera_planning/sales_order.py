@@ -12,12 +12,15 @@ On submit, with the tick:
     customer if it has none). A project already tied to a different Sales Order is refused on save:
     a made-to-order project is one customer's order.
   - Amending a cancelled order → the amended order takes over the original's project.
-On cancel: a project this order created and nothing has used yet (no reservations, requests or
-orders) is set to Cancelled; one already in use stays open, with a comment saying why.
+On cancel: the project's Active reservations that nothing has been issued against yet are
+Released (stock nobody will use for a cancelled order must not stay held). Then a project this
+order created and nothing else uses (no remaining reservations, requests or orders) is set to
+Cancelled; one still in use stays open, with a comment saying why.
 """
 from urllib.parse import quote
 
 import frappe
+from frappe.utils import flt
 from frappe import _
 
 MTO = "Made to order"
@@ -125,6 +128,28 @@ def _in_use(project):
     return used
 
 
+def release_unissued(project, sales_order):
+    """Release the project's Active reservations with nothing issued against them yet.
+    (released, kept): how many were released, and how many stay because some was issued."""
+    from pranera_planning.reservation import get_reservation_state
+    rows = frappe.get_all("Project Stock Reservation", filters={"production_project": project, "status": "Active"},
+                          fields=["name", "batch_no"])
+    if not rows:
+        return 0, 0
+    issued = {r["name"]: flt(r.get("issued_qty")) for st in get_reservation_state({r.batch_no for r in rows}).values()
+              for r in st["reservations"]}
+    released = kept = 0
+    for r in rows:
+        if issued.get(r.name, 0) > 1e-6:
+            kept += 1
+            continue
+        frappe.db.set_value("Project Stock Reservation", r.name, {
+            "status": "Released", "released_on": frappe.utils.now_datetime(),
+            "remarks": _("Released: Sales Order {0} was cancelled.").format(sales_order)})
+        released += 1
+    return released, kept
+
+
 def on_cancel(doc, method=None):
     project = doc.get("project")
     if not doc.get("made_to_order") or not project:
@@ -132,7 +157,12 @@ def on_cancel(doc, method=None):
     p = frappe.db.get_value("Project", project, ["project_name", "sales_order", "status"], as_dict=True)
     if not p or p.sales_order != doc.name:
         return
+    released, kept = release_unissued(project, doc.name)
     used = _in_use(project)
+    if released or kept:
+        frappe.get_doc("Project", project).add_comment("Comment", _(
+            "Sales Order {0} was cancelled: {1} reservation(s) released; {2} kept because stock was already issued against them."
+        ).format(doc.name, released, kept))
     if used:
         frappe.get_doc("Project", project).add_comment(
             "Comment", _("Sales Order {0} was cancelled; the project stays open because it already has {1}.").format(

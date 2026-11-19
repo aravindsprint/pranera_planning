@@ -55,6 +55,81 @@ def create_plan(payload):
     return planner.create(json.loads(payload) if isinstance(payload, str) else payload)
 
 
+# ── long runs: preview and create as background jobs ──────────────────────────
+# A deep BOM (finishing → dyeing → knitting → yarn, fabrics with thousands of lots) can take
+# longer than the web server's request timeout, which then answers 504 and throws the work
+# away. start() runs the work in the "long" queue and the page polls job_status(); when no
+# background worker is running it falls back to doing the work in the request, as before.
+JOB_TTL = 3600
+JOB_KINDS = ("preview", "create")
+
+
+def _job_key(job):
+    return f"pranera_planning:plan_job:{job}"
+
+
+def _workers_running():
+    try:
+        from frappe.utils.background_jobs import get_workers
+        return bool(get_workers())
+    except Exception:
+        return False
+
+
+def _run(kind, payload):
+    return planner.propose(payload) if kind == "preview" else planner.create(payload)
+
+
+@frappe.whitelist(methods=["POST"])
+def start(kind, payload):
+    """Start a preview or a create. {"status": "done", "result"} when it ran here, else
+    {"status": "queued", "job"} to poll with job_status."""
+    frappe.only_for(PLANNERS)
+    if kind not in JOB_KINDS:
+        frappe.throw(_("Unknown plan step {0}.").format(kind))
+    payload = json.loads(payload) if isinstance(payload, str) else payload
+    if not _workers_running():
+        return {"status": "done", "result": _run(kind, payload)}
+    job = frappe.generate_hash(length=16)
+    frappe.cache().set_value(_job_key(job), {"status": "queued", "user": frappe.session.user}, expires_in_sec=JOB_TTL)
+    frappe.enqueue("pranera_planning.api.plan.run_job", queue="long", timeout=1800, job_id=f"pranera-plan-{job}",
+                   job=job, kind=kind, payload=payload)
+    return {"status": "queued", "job": job}
+
+
+def run_job(job, kind, payload):
+    """Background job behind start(). A create is all or nothing: committed only when every
+    reservation and request was made."""
+    key = _job_key(job)
+    state = frappe.cache().get_value(key) or {"user": frappe.session.user}
+    frappe.cache().set_value(key, {**state, "status": "running"}, expires_in_sec=JOB_TTL)
+    try:
+        result = _run(kind, payload)
+        if kind == "create":
+            frappe.db.commit()
+        state.update(status="done", result=result)
+    except Exception as e:
+        frappe.db.rollback()
+        if isinstance(e, frappe.ValidationError):
+            message = frappe.utils.strip_html(str(e)) or _("The plan could not be made.")
+        else:
+            frappe.log_error(title=f"Plan {kind} failed")
+            message = _("The plan could not be made: {0}. Details are in the Error Log.").format(type(e).__name__)
+        state.update(status="failed", error=message)
+    frappe.cache().set_value(key, state, expires_in_sec=JOB_TTL)
+
+
+@frappe.whitelist()
+def job_status(job):
+    """{"status": "queued" | "running" | "done" | "failed", "result"?, "error"?} of your own job."""
+    state = frappe.cache().get_value(_job_key(job))
+    if not state:
+        frappe.throw(_("This plan run has expired. Run it again."))
+    if state.get("user") != frappe.session.user:
+        frappe.throw(_("Not your plan run."), frappe.PermissionError)
+    return {k: state.get(k) for k in ("status", "result", "error") if k in state}
+
+
 @frappe.whitelist()
 def plan_defaults(project):
     """Where the Plan tab starts for a project: made to order → its Sales Order's open lines

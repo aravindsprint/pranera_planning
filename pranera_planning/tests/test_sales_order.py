@@ -99,6 +99,18 @@ class TestMadeToOrderProject(unittest.TestCase):
         self.assertEqual(d.project, "SAL-ORD-2026-00012")
         self.assertIn("project-planning?project=SAL-ORD-2026-00012&tab=plan", self.messages[0])
 
+    def test_an_order_of_bought_items_gets_a_purchase_project(self):
+        boms = {"DMF425/VA POWDER BLUE/54OW"}
+        self.f.get_all = lambda doctype, filters=None, pluck=None, **kw: (
+            [i for i in filters["item"][1] if i in boms] if doctype == "BOM" else [])
+        d = self.order(items=[_dict(item_code="CHEM00236/CAUSTIC SODA FLAKES")])
+        self.so.on_submit(d)
+        self.assertEqual(self.projects["SAL-ORD-2026-00012"].project_type, "Purchase")
+        self.projects.clear()
+        d = self.order(items=[_dict(item_code="CHEM00236/CAUSTIC SODA FLAKES"), _dict(item_code="DMF425/VA POWDER BLUE/54OW")])
+        self.so.on_submit(d)
+        self.assertEqual(self.projects["SAL-ORD-2026-00012"].project_type, "Production")
+
     def test_a_chosen_project_is_linked_not_created(self):
         self.projects["26PTIN1710"] = _dict(name="26PTIN1710", project_name="26PTIN1710", status="Open",
                                             project_type="Production", planning_order_type=None, sales_order=None, customer=None)

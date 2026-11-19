@@ -316,11 +316,27 @@ function payload() {
     routes: form.routes, services: form.services, boms: form.boms,
   }
 }
+// Preview and Create can outlast the web server's timeout on deep BOMs, so they run as a
+// background job and are polled; the server runs them in the request when no worker is up.
+const POLL_MS = 2000
+const POLL_LIMIT_MS = 30 * 60 * 1000
+async function runPlanStep(kind) {
+  const started = await callMessage('pranera_planning.api.plan.start', { kind, payload: payload() })
+  if (started.status === 'done') return started.result
+  const until = Date.now() + POLL_LIMIT_MS
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, POLL_MS))
+    const s = await callMessage('pranera_planning.api.plan.job_status', { job: started.job })
+    if (s.status === 'done') return s.result
+    if (s.status === 'failed') throw new Error(s.error || 'The plan could not be made.')
+  }
+  throw new Error('The plan is still running after 30 minutes. Reload the project later to see what was created.')
+}
 async function check() {
   busy.value = true
   error.value = ''
   try {
-    proposals.value = await callMessage('pranera_planning.api.plan.preview', { payload: payload() })
+    proposals.value = await runPlanStep('preview')
     step.value = 'proposal'
   } catch (e) {
     error.value = e.message
@@ -344,7 +360,7 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    created.value = await callMessage('pranera_planning.api.plan.create_plan', { payload: payload() })
+    created.value = await runPlanStep('create')
     step.value = 'created'
     if (props.embedded && created.value.length) emit('created', created.value)
   } catch (e) {

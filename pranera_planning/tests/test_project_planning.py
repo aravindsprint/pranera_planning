@@ -77,6 +77,19 @@ class TestProjectPlanning(unittest.TestCase):
         self.assertEqual((o["project"]["customer"], o["project"]["delivery_date"]), ("BUYER", "2026-11-15"))
         self.assertEqual(o["stages"][0]["planned_qty"], 0)
 
+    def test_held_counts_only_this_projects_reservations(self):
+        # _remaining covers every reservation on the batches involved, other projects' too.
+        self.project(sales_order="SO-1")
+        self.api.sales_order_lines = lambda so: []
+        P = self.planner
+        P.free_lots = lambda items: {}
+        P.held_for = lambda project, items: {}
+        P.coming = lambda project, items: ({}, {})
+        self.api._remaining = lambda rows: {"R1": 570.8, "R-OTHER": 46.31}
+        self.f.get_all = lambda doctype, **kw: [] if doctype != "Project Stock Reservation" else [_dict(name="R1", batch_no="B")]
+        self.f.db.get_value = lambda *a, **k: _dict(customer="BUYER", delivery_date="2026-11-15")
+        self.assertEqual(self.api.get_overview("26PTIN1710")["totals"]["held"], 570.8)
+
     def test_made_to_stock_programme(self):
         self.project(name="26STK-X", planning_order_type="Made to stock", stock_family="2TF ECO 220", stock_period="Q4",
                      saved_plan=json.dumps({"lines": [{"item": SKF, "qty": 5000, "mode": "top_up"}], "needed_by": "2026-12-20"}))

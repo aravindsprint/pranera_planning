@@ -61,6 +61,7 @@ class TestPropose(unittest.TestCase):
             return boms, rows
         P.bom_tree = bom_tree
         P.last_service = lambda items: {SKF: "DRYER"}                      # this fabric last went to the dryer
+        P.request_warehouse = lambda item, comp, settings, **kw: ("Stores - PSS", "item default")
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
             [("26PTIN1710", "Made to order"), ("25PUR001", ""), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
 
@@ -188,6 +189,46 @@ class TestPropose(unittest.TestCase):
     def test_replanning_a_stock_project_keeps_it(self):
         props = self._mts("{YY}STK-{FAMILY}-{PERIOD}-{SEQ}", ["26STK-2TF ECO 220-Q4-01"], {"project": "26STK-2TF ECO 220-Q4-01"})
         self.assertEqual((props[0]["project"]["project"], props[0]["project"]["exists"]), ("26STK-2TF ECO 220-Q4-01", True))
+
+    def test_a_request_with_no_warehouse_warns_in_the_proposal_and_create_refuses(self):
+        P = self.P
+        P.request_warehouse = lambda item, comp, settings, **kw: (None, None) if item == GKF else ("Stores - PSS", "item default")
+        p = self.run_mto()
+        self.assertEqual(p["missing_warehouse"], [GKF])
+        self.assertTrue(any("No warehouse found for " + GKF in w for w in p["warnings"]))
+        with self.assertRaises(Exception):
+            P._create_one(p)
+
+    def test_requests_carry_the_warehouse_the_proposal_found(self):
+        p = self.run_mto()
+        lines = [ln for ls in p["requests"].values() for ln in ls]
+        self.assertTrue(lines)
+        self.assertTrue(all(ln["warehouse"] == "Stores - PSS" for ln in lines))
+        self.assertEqual(p["missing_warehouse"], [])
+
+    def test_reservable_summary_counts_only_what_a_plan_could_reserve(self):
+        P = self.P
+        P.free_lots = lambda codes: {GKF: [lot("G-OWN", 40, "26PTIN1710"),                 # own: counts
+                                           lot("G-BUY", 100, "25PUR001", roll="R1"),        # purchased elsewhere: borrowable
+                                           lot("G-MADE", 500, "26PTIN1645", produced=True), # produced for another: not
+                                           lot("G-MTO", 70, "26PTIN1710X"),                 # unknown project kind: borrowable
+                                           lot("G-NONE", 300, None)]}                       # no project: can't be reserved
+        out = P.reservable_summary([GKF], "26PTIN1710")[GKF]
+        self.assertEqual(out["own"], 40)
+        self.assertEqual(out["elsewhere"], 170)
+        self.assertEqual(out["unassigned"], 0)
+
+    def test_required_dates_are_filled_with_today(self):
+        class Doc(_dict):
+            meta = _dict(fields=[_dict(fieldname="date", fieldtype="Date", reqd=1),
+                                 _dict(fieldname="schedule_date", fieldtype="Date", reqd=1),
+                                 _dict(fieldname="note", fieldtype="Data", reqd=1)])
+
+            def set(self, k, v):
+                self[k] = v
+        d = Doc(schedule_date="2026-12-01")
+        self.P._fill_required_dates(d)
+        self.assertEqual((d.get("date"), d.get("schedule_date"), d.get("note")), ("2026-10-01", "2026-12-01", None))
 
 
 if __name__ == "__main__":

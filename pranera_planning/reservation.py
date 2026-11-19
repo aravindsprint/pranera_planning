@@ -71,7 +71,7 @@ from frappe.utils import flt
 
 from pranera_planning.reservation_math import (
     EPS, allocate_issues, allowed_issue_qty, clean_roll, deepest_minimum, delivery_allowed, location_summary, place_packed_rolls,
-    purchase_shortfall, remaining_qty, reservations_to_move, reserved_first, same_project, summarise_free_stock,
+    purchase_shortfall, remaining_qty, reservable, reservations_to_move, reserved_first, same_project, summarise_free_stock,
 )
 
 ENFORCED_TYPES = ("Material Transfer for Manufacture", "Send to Subcontractor", "Manufacture")
@@ -1083,7 +1083,7 @@ def _check(doc):
         if foreign:
             problems.append(_(
                 "<b>{0}</b> in {1} was produced for project <b>{2}</b>. Issuing {3:g} to {4} needs a "
-                "reservation for {4} on the Stock Reservation page (reserved for {4} here: {5:g})."
+                "reservation for {4} on the Stock & reservations tab of Project Planning (reserved for {4} here: {5:g})."
             ).format(batch, wh, owner, qty, project, own))
         else:
             problems.append(_(
@@ -1106,7 +1106,7 @@ def _check(doc):
         if foreign and not any(same_project(r["production_project"], project) for r in on_roll):
             problems.append(_(
                 "<b>{0}</b> roll <b>{1}</b> in {2} was produced for project <b>{3}</b> and is not reserved "
-                "for {4}. Reserve that roll for {4} on the Stock Reservation page first."
+                "for {4}. Reserve that roll for {4} on the Stock & reservations tab of Project Planning first."
             ).format(batch, roll, wh, owner, project))
         else:
             problems.append(_(
@@ -1154,7 +1154,7 @@ def move_reservations(doc, method=None):
     except Exception:
         frappe.log_error(title="Moving reservations with a Material Transfer failed")
         frappe.msgprint(_("This transfer moved reserved stock, but its reservations could not be moved along — "
-                          "please check them on the Stock Reservation page and report it (Error Log)."),
+                          "please check them on the Stock & reservations tab of Project Planning and report it (Error Log)."),
                         title=_("Reservations not moved"), indicator="orange")
 
 
@@ -1344,7 +1344,7 @@ def free_stock(item_codes, for_project=None, include_produced_elsewhere=True):
         free = 0.0
         for wh, loc in locs.items():
             res = reservations_at(state[batch], wh) if batch in state else []
-            free += location_summary(loc["available"], loc["rolls"], res)["free"] if res else max(0.0, loc["available"])
+            free += reservable(location_summary(loc["available"], loc["rolls"], res)["free"] if res else max(0.0, loc["available"]))
         if (not include_produced_elsewhere and batch not in purchased and owners.get(batch)
                 and not (for_project and same_project(owners[batch], for_project))):
             continue
@@ -1432,9 +1432,17 @@ def _purchase_shortfalls(doc, cfg):
         "Item Group", filters={"name": ["in", list(set(groups.values()))]}, fields=["name", "lft", "rgt"])}
 
     out = []
+    from_plan = bool(doc.get("from_project_plan"))
     for project in {key[0] for key in wanted}:
-        stock = free_stock([key[1] for key in wanted if key[0] == project], for_project=project or None,
-                           include_produced_elsewhere=False)
+        codes = [key[1] for key in wanted if key[0] == project]
+        stock = free_stock(codes, for_project=project or None, include_produced_elsewhere=False)
+        if from_plan and project and stock:
+            # A made-to-order plan sized this request after reserving everything it could:
+            # measure it against that same stock, not against stock it cannot reserve.
+            from pranera_planning.planner import reservable_summary
+            plan_view = reservable_summary(list(stock), project)
+            stock = {i: {**plan_view.get(i, summarise_free_stock([], project)), "uom": st.get("uom")}
+                     for i, st in stock.items()}
         for (p, item), requested in wanted.items():
             if p != project or item not in stock:
                 continue
@@ -1448,7 +1456,7 @@ def _purchase_shortfalls(doc, cfg):
 
 
 def _shortfall_message(breaches, cfg, can_override):
-    page = "/planning-app/project-stock-reservation?project="
+    page = "/planning-app/project-planning?tab=stock&project="
     esc = frappe.utils.escape_html
     parts = []
     for b in breaches:
@@ -1468,7 +1476,7 @@ def _shortfall_message(breaches, cfg, can_override):
             "With that stock free, this request can ask for at most <b>{6:,.0f} {3}</b>."
         ).format(esc(b["item_code"]), _(" for {0}").format(esc(b["project"])) if b["project"] else "",
                  b["requested"], uom, b["free_counted"], "<br>".join(f"&nbsp;&nbsp;• {x}" for x in bits), b["max_request"]))
-    tail = _("Reserve the free stock for the project on the Stock Reservation page (it then no longer counts as free), "
+    tail = _("Reserve the free stock for the project on the Stock & reservations tab of Project Planning (it then no longer counts as free), "
              "then submit this request for the rest.")
     if cfg["mode"] == "block" and not can_override:
         roles = ", ".join(sorted(cfg["roles"])) or _("(none set in Stock Reservation Settings)")
@@ -1477,7 +1485,7 @@ def _shortfall_message(breaches, cfg, can_override):
 
 
 def _free_stock_message(found):
-    page = "/planning-app/project-stock-reservation?project="
+    page = "/planning-app/project-planning?tab=stock&project="
     esc = frappe.utils.escape_html
     parts = []
     for r, project, st in found:
@@ -1498,7 +1506,7 @@ def _free_stock_message(found):
         parts.append(_("<b>{0}</b> — requesting {1:,.0f} {2}:<br>{3}").format(
             esc(r.item_code), wanted, uom, "<br>".join(f"&nbsp;&nbsp;• {b}" for b in bits)))
     return "<br><br>".join(parts) + "<br><br>" + _(
-        "Open a project above to reserve its stock for your project on the Stock Reservation page, "
+        "Open a project above to reserve its stock for your project on the Stock & reservations tab of Project Planning, "
         "then reduce or drop this request.")
 
 
@@ -1600,7 +1608,7 @@ def _check_reserved_first(doc):
         problems.append(_(
             "Project <b>{0}</b> has {1:g} of <b>{2}</b> reserved and waiting, but this entry issues {3:g} "
             "from other stock. Issue it from the reservation first:<br>{4}<br>"
-            "(or release the reservation on the Stock Reservation page if it is no longer needed)."
+            "(or release the reservation on the Stock & reservations tab of Project Planning if it is no longer needed)."
         ).format(g["project"], result["usable"], item, result["outside"], where))
 
     if not problems:

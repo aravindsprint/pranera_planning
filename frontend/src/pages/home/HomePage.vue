@@ -23,13 +23,12 @@
       </div>
 
       <div class="card">
-        <div class="empty-state">
-          <div class="empty-state__title">No planning pages yet</div>
-          <div class="empty-state__sub">
-            Pages registered in <code>src/config/pages.js</code> appear in the menu.
-            Copy <code>src/pages/_template/TemplatePage.vue</code> to start one.
-          </div>
-        </div>
+        <div class="card__title">Planning</div>
+        <ul class="page-links">
+          <li v-for="p in links" :key="p.path">
+            <router-link :to="`${APP_BASE}/${p.path}`"><i :class="p.icon" aria-hidden="true"></i> {{ p.title }}</router-link>
+          </li>
+        </ul>
       </div>
     </main>
   </div>
@@ -41,6 +40,11 @@ import AppHeader from '@/components/AppHeader.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getCurrentUser } from '@/api/frappe'
 import { backendLabel } from '@/config/backend'
+import { pages } from '@/config/pages'
+import { APP_BASE } from '@/config/app'
+
+// The menu's pages, minus Home and the System section.
+const links = pages.filter((p) => p.nav && p.path !== 'home' && p.section && p.section !== 'System')
 
 const auth = useAuthStore()
 
@@ -66,5 +70,7 @@ onMounted(runCheck)
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin-bottom: 16px; font-size: 14px; }
 dt { color: var(--slate-500); }
 .muted { color: var(--slate-500); }
+.page-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; }
+.page-links i { margin-right: 6px; color: var(--slate-500); }
 code { background: var(--slate-100); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 </style>

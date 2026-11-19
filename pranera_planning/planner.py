@@ -34,7 +34,7 @@ from pranera_planning.reorder_math import (
     DEFAULT_STOCK_PATTERN, deepest, next_seq, normalise_family, period_of, stock_project_name,
 )
 from pranera_planning.reservation import (
-    EPS, get_produced_owners, get_reservation_state, get_stock_locations, reservations_at, roll_tracked_items,
+    EPS, get_produced_owners, project_sco_items, get_reservation_state, get_stock_locations, reservations_at, roll_tracked_items,
     same_project, stage_of,
 )
 from pranera_planning.reservation_math import location_summary, reservable, summarise_free_stock
@@ -230,24 +230,30 @@ def coming(project, items):
     add(frappe.db.sql(f"""SELECT production_item, SUM(GREATEST(qty - produced_qty, 0)), COUNT(*) FROM `tabWork Order`
                           WHERE docstatus = 1 AND status NOT IN {DONE} AND project = %(p)s AND production_item IN %(items)s
                           GROUP BY production_item""", v), "Work Orders:")
-    add(frappe.db.sql(f"""SELECT soi.item_code, SUM(GREATEST(soi.qty - soi.received_qty, 0) * IFNULL(NULLIF(soi.conversion_factor, 0), 1)), COUNT(*)
-                          FROM `tabSubcontracting Order Item` soi
-                          JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1 AND sco.status NOT IN {DONE}
-                          LEFT JOIN `tabPurchase Order Item` poi ON poi.name = soi.purchase_order_item
-                          WHERE (soi.project = %(p)s OR poi.project = %(p)s) AND soi.item_code IN %(items)s
-                          GROUP BY soi.item_code""", v), "Subcontracting Orders:")
+    sco_items = project_sco_items(project)
+    if sco_items:
+        add(frappe.db.sql(f"""SELECT soi.item_code, SUM(GREATEST(soi.qty - soi.received_qty, 0) * IFNULL(NULLIF(soi.conversion_factor, 0), 1)), COUNT(*)
+                              FROM `tabSubcontracting Order Item` soi
+                              JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1 AND sco.status NOT IN {DONE}
+                              WHERE soi.name IN %(sco)s AND soi.item_code IN %(items)s
+                              GROUP BY soi.item_code""", {**v, "sco": sco_items}), "Subcontracting Orders:")
     add(frappe.db.sql(f"""SELECT poi.item_code, SUM(GREATEST(poi.qty - poi.received_qty, 0) * IFNULL(NULLIF(poi.conversion_factor, 0), 1)), COUNT(*)
                           FROM `tabPurchase Order Item` poi
                           JOIN `tabPurchase Order` po ON po.name = poi.parent AND po.docstatus = 1
                            AND po.status NOT IN {DONE + ('Delivered', 'On Hold')} AND IFNULL(po.is_subcontracted, 0) = 0
                           WHERE poi.project = %(p)s AND poi.item_code IN %(items)s GROUP BY poi.item_code""", v), "Purchase Orders:")
-    proj = "(mri.project = %(p)s" + (" OR mri.for_project = %(p)s)" if _has("Material Request Item", "for_project") else ")")
-    add(frappe.db.sql(f"""SELECT mri.item_code, SUM(GREATEST(mri.stock_qty - mri.ordered_qty, 0)), COUNT(*)
-                          FROM `tabMaterial Request Item` mri
-                          JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mr.docstatus < 2
-                           AND IFNULL(mr.status, '') NOT IN ('Stopped', 'Cancelled', 'Ordered', 'Transferred', 'Issued', 'Received')
-                           AND mr.material_request_type IN ('Purchase', 'Manufacture')
-                          WHERE {proj} AND mri.item_code IN %(items)s GROUP BY mri.item_code""", v), "Material Requests (incl. drafts):")
+    # project OR for_project as two indexed lookups (an OR in one query scans the whole table)
+    mr_items = frappe.db.sql_list("SELECT name FROM `tabMaterial Request Item` WHERE project = %(p)s AND item_code IN %(items)s", v)
+    if _has("Material Request Item", "for_project"):
+        mr_items += frappe.db.sql_list("SELECT name FROM `tabMaterial Request Item` WHERE for_project = %(p)s AND item_code IN %(items)s", v)
+    if mr_items:
+        add(frappe.db.sql("""SELECT mri.item_code, SUM(GREATEST(mri.stock_qty - mri.ordered_qty, 0)), COUNT(*)
+                             FROM `tabMaterial Request Item` mri
+                             JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mr.docstatus < 2
+                              AND IFNULL(mr.status, '') NOT IN ('Stopped', 'Cancelled', 'Ordered', 'Transferred', 'Issued', 'Received')
+                              AND mr.material_request_type IN ('Purchase', 'Manufacture')
+                             WHERE mri.name IN %(mri)s GROUP BY mri.item_code""", {"mri": tuple(set(mr_items))}),
+            "Material Requests (incl. drafts):")
     return qty, src
 
 

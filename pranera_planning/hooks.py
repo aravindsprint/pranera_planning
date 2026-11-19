@@ -101,4 +101,5 @@ after_install = [
     "pranera_planning.patches.add_supplier_lead_days.execute",
     "pranera_planning.patches.add_stock_plan_flag.execute",
     "pranera_planning.patches.add_project_plan_flag.execute",
+    "pranera_planning.patches.add_project_indexes.execute",
 ]

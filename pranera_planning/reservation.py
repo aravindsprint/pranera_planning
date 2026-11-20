@@ -1483,8 +1483,8 @@ def _shortfall_message(breaches, cfg, can_override):
             "With that stock free, this request can ask for at most <b>{6:,.0f} {3}</b>."
         ).format(esc(b["item_code"]), _(" for {0}").format(esc(b["project"])) if b["project"] else "",
                  b["requested"], uom, b["free_counted"], "<br>".join(f"&nbsp;&nbsp;• {x}" for x in bits), b["max_request"]))
-    tail = _("Reserve the free stock for the project on the Stock & reservations tab of Project Planning (it then no longer counts as free), "
-             "then submit this request for the rest.")
+    tail = _("Plan the project again (Project Planning › Plan): it reserves this free stock — old stock with no project "
+             "included — and asks only for the rest. Then delete this request, or submit it for what is still missing.")
     if cfg["mode"] == "block" and not can_override:
         roles = ", ".join(sorted(cfg["roles"])) or _("(none set in Stock Reservation Settings)")
         tail += "<br>" + _("Only these roles can buy anyway, with a reason: {0}.").format(esc(roles))

@@ -367,3 +367,133 @@ A made-to-stock plan counts as its own stock: the project's, any other made-to-s
 project's (free for anyone) and stock with no project (old stock from before projects were
 required) — the same free stock the re-order report counts (`planner.counts_as_own`).
 A made-to-order plan counts only its own project's stock.
+
+## Stock programme state on the Overview
+
+For a made-to-stock project the Overview runs the planner on the saved targets
+(`api.project_planning.programme_status`) and shows: **At level: nothing to plan**, or **Below
+level** with what a plan would buy (also per item, in the *To plan* column). Once today falls in a
+later period than the one the project was created in, it offers **Close programme**
+(`close_programme`: status Completed; the stock stays free for any order). The button to re-plan
+reads **Top up**.
+
+## Time and Action (T&A) plans — step 1
+
+Every project (orders and stock programmes) gets a **Time and Action Plan** (doctype, one per
+project, child *Time and Action Activity*), built on Create in the Plan tab or with *Rebuild from
+plan* (`ta.py`; scheduling in `ta_math.py`). Each level the plan makes or buys becomes an
+activity, scheduled backwards from the Sales Order's delivery date (else the plan's Needed by):
+the top level ends on that date, each level below ends when the one above starts, and lasts its
+stage days for its route (Re-order Settings) or, bought, its supplier's lead days. A last milestone
+marks the date; more milestones (lab dip, PP sample, dispatch) are added by hand.
+
+Actuals are read, not typed: Work Orders (in-house), subcontracting POs and Subcontracting
+Receipts (job work), POs and Purchase Receipts (bought), all under the project. 98 % of the
+planned quantity counts as done. A rebuild keeps activities already started and manual
+milestones, and each activity keeps its first planned end (baseline) to show slippage.
+The *Time & Action* tab on Project Planning shows a timeline (planned, actual, today, delivery)
+and the editable activity list.
+
+Next steps: workstations (stage, capacity, dia/gauge on the Workstation) and allocation;
+then the blocking checks and the cross-order reports.
+
+## Time and Action — step 2: workstations
+
+Capacity comes from the **Workstation** doctype: its Working Hours (hours a day; none set =
+24 h), Production Capacity (jobs in parallel) and Holiday List, plus custom fields *Planning
+stage*, *Kg per hour*, *Dia* and *Gauge* (patch `add_workstation_fields`; the Item gets *Knitting
+dia* and *gauge*). Capacity a day = Kg per hour × hours × jobs; 0 on holidays (`ws_math.py`).
+
+The **Workstation Board** (`/planning-app/workstation-board`, `api.workstation_board`) shows a
+stage's machines × days with the load (bookings spread evenly over their working days), and the
+in-house T&A activities still waiting for a machine, each with every machine's fit and earliest
+free slot. Booking sets the activity's machine, start and an end that follows from the machine's
+capacity. It is refused when the machine doesn't fit (stage, dia, gauge) or would go over capacity
+on any day, unless an override role (Stock Reservation Settings) gives a reason (kept in the
+activity's remarks and as a comment). A T&A rebuild keeps booked activities' machine and dates.
+
+## Choosing which lots to borrow
+
+In the plan proposal, a level with borrowable stock has **Choose lots** under *Reserve*: a picker
+listing every lot the plan could borrow (project, batch, warehouse, roll, free qty), pre-ticked
+with the plan's own choice. Ticked lots and quantities go to the planner as `picks`
+(`{item: [{key, qty}]}`, key = batch|warehouse|roll, `plan_math.apply_picks`); the plan then
+borrows only those, in that order, capped at what is free and at what the level needs — the rest
+is made or bought. *Let the plan choose* goes back to automatic. Create re-checks with the same
+picks and reserves exactly them; a chosen lot no longer free is left out with a warning.
+Reserving by hand on Stock & reservations still works too: stock held for the project counts as
+its own before anything is borrowed.
+
+Bought items are due when the first stage after them starts (worked back from Needed by through
+the stage days, the same schedule as the T&A plan): the plan shows "due …" next to the supplier's
+arrival and warns when an order placed today would arrive after it.
+
+## Time and Action — step 3: checks and reports
+
+Checks (`ta_checks.py`; Re-order Settings › Workstation check: Block / Warn / Off), overridable by
+the Stock Reservation Settings roles with *T&A override reason* (patch `add_ta_check_fields`):
+- **Work Order** (validate): the machine booked for its item on the project's T&A plan is copied
+  onto operations with no workstation (the only operation, or those named like the stage); on
+  submit, an operation of that stage on another machine is refused.
+- **Job Card** (validate): on a machine other than the booked one — refused; started (a time log)
+  while its Work Order has no material transferred and doesn't skip the transfer — refused.
+
+Reports (`ta_reports.py`, `api.ta_reports`, page `/planning-app/ta-reports`):
+- **Dashboard**: open projects' activities late / due in 7 days / in progress, by stage and by
+  customer, and the list to act on.
+- **Workstation utilisation**: booked kg against capacity per machine and week.
+- **Delays**: for activities finished in a period, planned vs actual days per stage, average
+  delay, on-time %, plus late open ones, with the remarks as reasons and slip against the first plan.
+
+## Is the raw material ready?
+
+`material_ready.py` checks each open stage activity's inputs (its item's BOM, process loss
+counted) against what covers them: already transferred to its Work Orders, then the project's
+own free lots and stock held for it (shared between its stages, earliest planned start first).
+The rest is expected at the end of the input's own T&A activity. Status Ready / Partial / Not
+ready, "late" when the rest comes after the stage's planned start. Shown as *Raw material* on
+the Workstation Board (bookings and waiting activities; a machine shows how many of its bookings
+are waiting for material) and on the Time & Action tab, with the per-input breakdown on click.
+
+Workstation Board views: **Grid** (machines × days load), **Kanban** (a column per machine with
+its bookings in start order, status Booked / In progress / Late / Done, progress and raw-material
+badge; drag a job onto a machine to book or move it — same checks — or back to *Waiting* to release
+it) and **Calendar** (a month of whole weeks, all machines of the stage or one, each booking on
+every day it runs; for one machine the day's load %).
+
+The Workstation Board also lists the machines with **no booking** in the period shown (and those
+under 30% booked, with their free working days); a click filters to that machine, and *Show only
+these* limits every view to the idle machines.
+
+## Who can be borrowed from (one rule for the plan and the request check)
+
+A plan may borrow (reserve) free purchased stock of any project that is not made to order — made
+to stock, or an old project with no Order type — and old stock that came under no project at all
+(`planner.can_borrow`); the Material Request check counts the same stock as free. A Project Stock
+Reservation's source project is now optional: empty means old stock with no project
+(`ProjectStockReservation.validate_batch`). The request check's message sends the user back to
+re-plan, which reserves that stock and asks only for the rest.
+
+## Levels below what is already coming
+
+When a level is covered by the project's own coming — a Manufacture Material Request not yet
+made into a Work Order (drafts too), or a Work Order whose material isn't transferred yet — that
+coming still needs its input. The plan explodes the BOM for that part too (`planner.coming_open`,
+`coming_open` in `plan_math.build_plan`), so the stages below stay in the plan, can be changed
+(route, BOM, lots) and get their Time and Action activities. Work Orders with material transferred,
+subcontracting orders and purchases are not exploded again.
+
+## Moving a stage from a Manufacture request to job work
+
+A plan level already covered by the project's own Manufacture request (e.g. dyeing requested
+in-house) can be moved to job work, in part or in full: switch the level to *Job work*, enter how
+much to move and *Apply*. The plan counts that much less as coming and raises it as a job-work
+Purchase request; on Create the Manufacture request is reduced by the same quantity
+(`mr_moves.py`): a draft is edited (an empty one deleted), a submitted one is cancelled and amended
+with the reduced line — only while nothing on it is a Work Order yet; otherwise reduce the Work
+Order instead.
+
+Plans create **one Material Request per item** by default (Re-order Settings › Material Requests
+from a plan: *One per item* / *One per kind*), so one item's request can be changed, cancelled or
+moved to job work without touching the others — moving all of a submitted one-item request just
+cancels it.

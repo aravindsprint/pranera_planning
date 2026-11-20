@@ -24,6 +24,9 @@ Per item, parents first (so an item needed in two places is added up before it's
 Plan line modes:
   need     deliver this qty, using stock first (made-to-order lines, and the levels below)
   top_up   bring the project's stock up to this level (own and coming count toward it)
+  coming_open  (per item) the part of the project's own coming that has no input yet —
+           Material Requests not yet made into orders, Work Orders whose material isn't
+           transferred: the level below is planned for it too, so the stage stays in the plan
   make     make / buy exactly this qty more — at its own level stock isn't taken off (the
            re-order report's suggestion already did that); the levels below still use stock
 """
@@ -86,6 +89,7 @@ def build_plan(lines, items, rules):
                     todo.append(inp)
 
     depth = {c: 0 for c in asks}
+    feeds = {}                                          # input: qty asked for its parent's coming
     queue = sorted([c for c in seen if parents[c] == 0])
     done, levels = set(), []
     while len(done) < len(seen):
@@ -108,14 +112,24 @@ def build_plan(lines, items, rules):
         row = {"item": code, "need": offset_need + fixed_need, "own": own, "coming": coming, "reserve": reserve,
                "short": short, "request": request, "made": made(code), "depth": depth.get(code, 0),
                "how": [(q, t) for q, t, _m in a], "inputs": []}
+        # what is coming from this project's own requests / orders that haven't had their input
+        # yet still needs it: plan the level below for that too, so the stage stays visible
+        coming_open = min(coming, float(it.get("coming_open") or 0))
+        row["coming_open"] = coming_open
+        # the part of this level's coming that only goes into its parent's coming (not counted twice)
+        row["feeds_coming"] = min(coming, feeds.get(code, 0.0))
         if made(code):
             for inp, ratio in it["bom"]:
                 if inp == code:
                     continue
                 q = request * float(ratio)
-                row["inputs"].append((inp, q))
+                q_open = coming_open * float(ratio)
+                row["inputs"].append((inp, q + q_open))
                 if q > EPS:
                     asks.setdefault(inp, []).append((q, f"{fmt(request)} × {fmt(ratio, 4)}", "need"))
+                if q_open > EPS:
+                    asks.setdefault(inp, []).append((q_open, f"{fmt(coming_open)} coming × {fmt(ratio, 4)}", "need"))
+                    feeds[inp] = feeds.get(inp, 0.0) + q_open
                 depth[inp] = max(depth.get(inp, 0), row["depth"] + 1)
                 parents[inp] -= 1
                 if parents[inp] == 0:
@@ -174,3 +188,42 @@ def lines_to_save(lines, levels, stock_before):
             level = float(stock_before.get(item) or 0) + request.get(item, 0.0)
             out.append({"item": item, "qty": round(level, 6), "mode": "top_up"})
     return out
+
+
+def lot_key(lot):
+    """A lot's identity for the planner's lot picker: batch | warehouse | roll."""
+    return f"{lot.get('batch_no') or ''}|{lot.get('warehouse') or ''}|{lot.get('roll_no') or ''}"
+
+
+def apply_picks(lots, picks):
+    """The lots the user chose to borrow, in the order chosen, each capped at what is still free.
+
+    lots   the borrowable lots [{"batch_no", "warehouse", "roll_no", "qty", ...}]
+    picks  [{"key", "qty"}] from the picker
+    Returns (chosen lots [{..., "qty": picked}], [keys no longer free])."""
+    by_key = {lot_key(l): l for l in lots}
+    out, gone = [], []
+    for p in picks or []:
+        lot = by_key.get(p.get("key"))
+        q = float(p.get("qty") or 0)
+        if q <= EPS:
+            continue
+        if not lot:
+            gone.append(p.get("key"))
+            continue
+        take = min(q, float(lot["qty"]))
+        if take > EPS:
+            out.append({**lot, "qty": take})
+    return out, gone
+
+
+def coming_total(levels):
+    """What is already coming for the plan, without counting a level twice: a level's coming
+    counts only for the part that doesn't just go into its parent's coming — dyed fabric coming
+    for finished fabric that is itself coming is the same 1,500, not another 1,500."""
+    total = 0.0
+    for l in levels:
+        part = float(l.get("coming") or 0) - float(l.get("feeds_coming") or 0)
+        if part > EPS:
+            total += part
+    return round(total, 3)

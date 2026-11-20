@@ -1,0 +1,176 @@
+{
+ "actions": [],
+ "creation": "2026-10-06 10:00:00.000000",
+ "modified": "2026-10-06 10:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Time and Action Activity",
+ "istable": 1,
+ "editable_grid": 1,
+ "permissions": [],
+ "fields": [
+  {
+   "fieldname": "seq",
+   "label": "#",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "activity",
+   "label": "Activity",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "kind",
+   "label": "Kind",
+   "fieldtype": "Select",
+   "options": "Stage\nBought\nMilestone",
+   "default": "Milestone"
+  },
+  {
+   "fieldname": "stage",
+   "label": "Stage",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "item_code",
+   "label": "Item",
+   "fieldtype": "Link",
+   "options": "Item",
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "item_name",
+   "label": "Item name",
+   "fieldtype": "Data",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qty",
+   "label": "Qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "uom",
+   "label": "UOM",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "route",
+   "label": "Route",
+   "fieldtype": "Select",
+   "options": "\nIn-house\nJob work\nBought"
+  },
+  {
+   "fieldname": "supplier",
+   "label": "Supplier / job worker",
+   "fieldtype": "Link",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "service",
+   "label": "Job-work service",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "workstation",
+   "label": "Workstation",
+   "fieldtype": "Link",
+   "options": "Workstation"
+  },
+  {
+   "fieldname": "column_break_d",
+   "label": "",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "duration_days",
+   "label": "Days",
+   "fieldtype": "Int"
+  },
+  {
+   "fieldname": "planned_start",
+   "label": "Planned start",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "planned_end",
+   "label": "Planned end",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "baseline_end",
+   "label": "First planned end",
+   "fieldtype": "Date",
+   "read_only": 1,
+   "description": "The planned end this activity was first given: how far it has slipped."
+  },
+  {
+   "fieldname": "actual_start",
+   "label": "Actual start",
+   "fieldtype": "Date",
+   "description": "Filled in from the documents for stages; set by hand for milestones."
+  },
+  {
+   "fieldname": "actual_end",
+   "label": "Actual end",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "source",
+   "label": "Source",
+   "fieldtype": "Select",
+   "options": "plan\nmanual",
+   "default": "manual",
+   "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "label": "Remarks",
+   "fieldtype": "Small Text"
+  }
+ ],
+ "field_order": [
+  "seq",
+  "activity",
+  "kind",
+  "stage",
+  "item_code",
+  "item_name",
+  "qty",
+  "uom",
+  "route",
+  "supplier",
+  "service",
+  "workstation",
+  "column_break_d",
+  "duration_days",
+  "planned_start",
+  "planned_end",
+  "baseline_end",
+  "actual_start",
+  "actual_end",
+  "source",
+  "remarks"
+ ]
+}

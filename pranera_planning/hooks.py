@@ -114,3 +114,12 @@ after_install = [
     "pranera_planning.patches.add_project_plan_flag.execute",
     "pranera_planning.patches.add_project_indexes.execute",
 ]
+
+# ERPNext 15.124.x sums a project's stock-entry additional costs with one OR query that can't
+# use an index (85–90 s per Stock Entry submit/cancel on erptest). Swap in the two-query form
+# later version-15 ERPNext uses; same result. Remove once ERPNext is updated past that change.
+try:
+    from pranera_planning.overrides.project_cost import apply as _split_project_cost_query
+    _split_project_cost_query()
+except Exception:
+    pass

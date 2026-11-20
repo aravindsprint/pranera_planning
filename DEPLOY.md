@@ -40,3 +40,25 @@ Notes:
   fetch the new bundle after each deploy. Don't remove it.
 - There is deliberately no service worker / PWA. Add one only if the planning app
   needs offline use; the knit app's cache issues came from that layer.
+
+## 6. Copy the planning setup to another site
+
+`pranera_planning/setup/planning_setup.json` holds the planning setup made on erptest
+(Re-order Settings with stage lead days and group rules, supplier lead days, workstation
+stage / output per hour / Planning UOM / dia / gauge, and the stage prefixes in site config).
+`pranera_planning/setup_copy.py` applies it; see its docstring.
+
+```bash
+# refresh the file from erptest (optional; the committed copy is from 20 Nov 2026)
+bench --site erptest.pranera.in execute pranera_planning.setup_copy.export_setup
+# on the target: see what would change, then apply
+bench --site erp.pranera.in execute pranera_planning.setup_copy.apply_setup --kwargs "{'dry_run': 1}"
+bench --site erp.pranera.in execute pranera_planning.setup_copy.apply_setup
+sudo supervisorctl restart all
+bench --site erp.pranera.in execute pranera_planning.reorder.recalculate_all
+```
+
+Without a shell: in the browser console on `/app` as System Manager,
+`frappe.call("pranera_planning.setup_copy.apply_from_desk", {dry_run: 1})`, then with `dry_run: 0`,
+and add the `project_stock_reservation_*` keys under the site's Config. Missing records
+(item groups, suppliers, workstations, the warehouse) are skipped and listed, never created.

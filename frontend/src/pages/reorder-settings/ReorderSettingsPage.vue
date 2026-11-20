@@ -49,6 +49,7 @@
             <thead><tr><th>Item group</th><th>Demand from</th><th class="num">Safety days</th><th class="num">Cover days</th><th class="num">Round up to</th><th class="num">Lead days when bought</th><th></th></tr></thead>
             <tbody>
               <tr v-if="!s.group_rules.length"><td colspan="7" class="empty">No rules — every item uses the defaults above.</td></tr>
+              <tr v-else><td colspan="7" class="hint">Safety days, cover days and round up to left at 0 use the defaults above.</td></tr>
               <tr v-for="(r, i) in s.group_rules" :key="`g${i}`">
                 <td class="wide"><LinkField v-model="r.item_group" doctype="Item Group" placeholder="Item group" :disabled="!s.can_write" /></td>
                 <td><select v-model="r.demand_basis" class="form-input" :disabled="!s.can_write">

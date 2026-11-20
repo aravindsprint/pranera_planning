@@ -231,12 +231,13 @@ def recalculate_all():
     """Scheduler (daily): learn lead days, then recalculate every item with demand in the
     history window, or with a result from before (so it can drop to No demand)."""
     learn_lead_days()
+    frappe.db.commit()          # release Re-order Settings: the run below takes minutes
     cfg = load_settings()
     since = add_days(today(), -cfg["history_days"])
     sales, used = demand(since)
     items = set(sales) | set(used) | set(frappe.get_all("Item Re-order Level", pluck="name"))
     items = set(frappe.get_all("Item", filters={"name": ["in", list(items)], "is_stock_item": 1, "disabled": 0}, pluck="name")) if items else set()
-    count = calculate(items, cfg, sales=sales, used=used)
+    count = calculate(items, cfg, sales=sales, used=used, commit_every=COMMIT_EVERY)
     frappe.db.set_single_value("Re-order Settings", {"last_run": now_datetime(), "last_run_items": count})
     frappe.db.commit()
     return count
@@ -251,8 +252,12 @@ def recalculate_now():
     return _("Recalculating in the background — the report updates when it finishes.")
 
 
-def calculate(items, cfg, sales=None, used=None):
-    """Work out and store the numbers for `items`. Returns how many were written."""
+COMMIT_EVERY = 200     # the nightly run commits in batches, so it never holds locks for its whole run
+
+
+def calculate(items, cfg, sales=None, used=None, commit_every=None):
+    """Work out and store the numbers for `items`. Returns how many were written.
+    With `commit_every`, commits after that many items (background runs only)."""
     items = sorted(items)
     if not items:
         return 0
@@ -321,6 +326,8 @@ def calculate(items, cfg, sales=None, used=None):
         }
         _save(code, values)
         written += 1
+        if commit_every and written % commit_every == 0:
+            frappe.db.commit()
     return written
 
 
@@ -351,7 +358,22 @@ def _top_group(group):
     return _TOP[group]
 
 
+def _fit(values):
+    """Cut text to the field's length: Item names here run past Data's 140 characters and
+    insert() would refuse the whole row (set_value would silently truncate anyway)."""
+    meta = frappe.get_meta("Item Re-order Level")
+    out = dict(values)
+    for key, value in values.items():
+        df = meta.get_field(key)
+        if df and isinstance(value, str) and df.fieldtype in ("Data", "Link", "Select"):
+            limit = int(df.length or 140)
+            if len(value) > limit:
+                out[key] = value[:limit - 1].rstrip() + "…"
+    return out
+
+
 def _save(code, values):
+    values = _fit(values)
     if frappe.db.exists("Item Re-order Level", code):
         frappe.db.set_value("Item Re-order Level", code, values, update_modified=False)
     else:

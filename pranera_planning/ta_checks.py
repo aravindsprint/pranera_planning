@@ -91,12 +91,27 @@ def work_order(doc, method=None):
         frappe.log_error(title="T&A Work Order check failed")
 
 
+def _transferred_for(doc, wo):
+    """Material transferred for this job. When the Work Order transfers against Job Cards,
+    ERPNext keeps Work Order.material_transferred_for_manufacturing at 0 until EVERY operation
+    is completed (job_card.set_transferred_qty), so look at this Job Card's own transfers:
+    its transferred_qty, or failing that the number of submitted MTMs against it."""
+    if wo.get("transfer_material_against") != "Job Card":
+        return flt(wo.get("material_transferred_for_manufacturing"))
+    if flt(doc.get("transferred_qty")) > 0 or doc.is_new():
+        return flt(doc.get("transferred_qty"))
+    return flt(frappe.db.sql(
+        """SELECT COUNT(*) FROM `tabStock Entry` WHERE job_card = %s AND docstatus = 1
+           AND purpose = 'Material Transfer for Manufacture'""", doc.name)[0][0])
+
+
 def job_card(doc, method=None):
     if _mode() == "Off" or not doc.get("work_order"):
         return
     try:
         wo = frappe.db.get_value("Work Order", doc.work_order,
-                                 ["project", "production_item", "skip_transfer", "material_transferred_for_manufacturing"],
+                                 ["project", "production_item", "skip_transfer", "material_transferred_for_manufacturing",
+                                  "transfer_material_against"],
                                  as_dict=True) or {}
         problems = []
         ws, _stage = booked_for(wo.get("project"), wo.get("production_item"))
@@ -104,7 +119,7 @@ def job_card(doc, method=None):
             problems.append(_("{0} is booked on {1} in the T&A plan of {2}, not {3}.").format(
                 wo.get("production_item"), ws, wo.get("project"), doc.workstation))
         started = any(t.get("from_time") for t in (doc.get("time_logs") or []))
-        if started and not wo.get("skip_transfer") and flt(wo.get("material_transferred_for_manufacturing")) <= 0:
+        if started and not wo.get("skip_transfer") and _transferred_for(doc, wo) <= 0:
             problems.append(_("Work Order {0} has no material transferred yet: its input isn't there to start on.")
                             .format(doc.work_order))
         _enforce(doc, problems, _("Can't start this job"))

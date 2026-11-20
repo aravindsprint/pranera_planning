@@ -225,9 +225,17 @@ def non_pool_warehouses():
 
     Cached for an hour; cleared when a Work Order or Subcontracting Order is submitted.
     """
+    # Memoised in frappe.local too: callers ask once per Bin row (thousands in a re-order run).
+    local = frappe.local.cache
+    if local.get(WAREHOUSE_CACHE_KEY) is not None:
+        return local[WAREHOUSE_CACHE_KEY]
     cache = frappe.cache()
-    found = cache.get_value(WAREHOUSE_CACHE_KEY)
+    # expires=True is required: without it Frappe remembers the first miss (None) in
+    # frappe.local, and set_value with expires_in_sec never overwrites that, so every
+    # later call in the same request/job missed and re-ran the queries below.
+    found = cache.get_value(WAREHOUSE_CACHE_KEY, expires=True)
     if found is not None:
+        local[WAREHOUSE_CACHE_KEY] = found
         return found
 
     def counts(q):
@@ -269,6 +277,7 @@ def non_pool_warehouses():
         found.pop(w, None)
 
     cache.set_value(WAREHOUSE_CACHE_KEY, found, expires_in_sec=3600)
+    local[WAREHOUSE_CACHE_KEY] = found
     return found
 
 
@@ -280,6 +289,7 @@ def clear_warehouse_cache(doc=None, method=None):
     """doc_events hook: a newly submitted Work Order / Subcontracting Order may name a new
     WIP or supplier warehouse."""
     frappe.cache().delete_value(WAREHOUSE_CACHE_KEY)
+    frappe.local.cache.pop(WAREHOUSE_CACHE_KEY, None)
 
 
 def warehouse_place(warehouse):

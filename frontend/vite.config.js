@@ -39,6 +39,14 @@ export default defineConfig(({ command, mode }) => {
         output: {
           entryFileNames: 'index.js',
           chunkFileNames: 'chunks/[name]-[hash].js',
+          // Nothing may import the entry: "../index.js" has no ?v=, so after a deploy the
+          // browser fetches a second, stale copy of it (old menu, old app). main.js is a
+          // thin loader; Vite's preload helper goes to its own hashed chunk, and chunks
+          // must not re-export the entry's imports as side-effect imports.
+          manualChunks(id) {
+            if (id.includes('vite/preload-helper')) return 'preload-helper'
+          },
+          hoistTransitiveImports: false,
           assetFileNames: (info) => {
             const name = info.name || ''
             return name.endsWith('.css') ? 'index.css' : 'assets/[name]-[hash][extname]'

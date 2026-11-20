@@ -47,6 +47,15 @@ class TestFit(unittest.TestCase):
         self.assertTrue(W.fits({"stage": "Dyeing"}, KM))
         self.assertEqual(W.fits({"stage": "knitting"}, KM), [])               # no dia on the item: no check
 
+    def test_unit_must_match(self):
+        flat = {**KM, "uom": "Pcs", "dia": None}
+        circ = {**KM, "uom": "Kgs"}
+        self.assertEqual(W.fits({"stage": "Knitting", "uom": "Pcs"}, flat), [])
+        self.assertEqual(len(W.fits({"stage": "Knitting", "uom": "Kgs"}, flat)), 1)     # fabric on a collar machine
+        self.assertEqual(len(W.fits({"stage": "Knitting", "uom": "Pcs"}, circ)), 1)     # collars on a circular machine
+        self.assertEqual(W.fits({"stage": "Knitting", "uom": "kgs"}, circ), [])         # case ignored
+        self.assertEqual(W.fits({"stage": "Knitting", "uom": "Pcs"}, KM), [])           # machine without a unit: any
+
 
 if __name__ == "__main__":
     unittest.main()

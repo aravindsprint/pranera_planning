@@ -109,11 +109,15 @@ def earliest_slot(ws, booked, qty, not_before, horizon=120):
 
 
 def fits(item, ws):
-    """[reasons] a workstation can't make the item: its stage, and for knitting its dia and
-    gauge when both the item and the machine have them. Empty list = fits."""
+    """[reasons] a workstation can't make the item: its stage, its unit (the machine's Planning
+    UOM against the item's stock UOM), and for knitting its dia and gauge — each only when both
+    the item and the machine have it. Empty list = fits."""
     why = []
     if item.get("stage") and ws.get("stage") and item["stage"].strip().lower() != ws["stage"].strip().lower():
         why.append(f"it is a {ws['stage']} machine, not {item['stage']}")
+    a, b = (item.get("uom") or "").strip(), (ws.get("uom") or "").strip()
+    if a and b and a.lower() != b.lower():
+        why.append(f"it plans in {b}, the item is stocked in {a}")
     for key, label in (("dia", "dia"), ("gauge", "gauge")):
         a, b = item.get(key), ws.get(key)
         if a and b and abs(float(a) - float(b)) > EPS:

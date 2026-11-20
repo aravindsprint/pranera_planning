@@ -3,9 +3,9 @@
 Arithmetic in ws_math.py.
 
 From the Workstation:   Working Hours (hours a day), Production Capacity (jobs in parallel),
-                        Holiday List, and the custom fields Planning stage, Kg per hour,
+                        Holiday List, and the custom fields Planning stage, Output per hour (kg_per_hour), Planning UOM,
                         Dia and Gauge (patches/add_workstation_fields.py).
-From the Item:          Knitting dia and gauge (custom fields), checked against the machine's.
+From the Item:          Stock UOM, and knitting dia and gauge (custom fields), checked against the machine's.
 """
 from datetime import timedelta
 
@@ -46,8 +46,9 @@ def _secs(t):
 
 
 def workstations(stage=None, names=None, frm=None, to=None):
-    """{name: {name, stage, kg_per_hour, hours, hours_set, parallel, dia, gauge, holidays}}."""
-    custom = [f for f in ("planning_stage", "kg_per_hour", "machine_dia", "machine_gauge") if _has("Workstation", f)]
+    """{name: {name, stage, kg_per_hour, uom, hours, hours_set, parallel, dia, gauge, holidays}}.
+    kg_per_hour is output per hour in the machine's Planning UOM (uom; blank = any unit)."""
+    custom = [f for f in ("planning_stage", "kg_per_hour", "planning_uom", "machine_dia", "machine_gauge") if _has("Workstation", f)]
     std = [f for f in ("production_capacity", "holiday_list", "disabled") if _has("Workstation", f)]
     filters = {}
     if names:
@@ -74,7 +75,7 @@ def workstations(stage=None, names=None, frm=None, to=None):
     for r in rows:
         hrs = _hours(hours.get(r.name, []))
         out[r.name] = {"name": r.name, "label": r.get("workstation_name") or r.name, "stage": r.get("planning_stage") or "",
-                       "kg_per_hour": flt(r.get("kg_per_hour")), "hours": hrs or DEFAULT_HOURS, "hours_set": bool(hrs),
+                       "kg_per_hour": flt(r.get("kg_per_hour")), "uom": r.get("planning_uom") or "", "hours": hrs or DEFAULT_HOURS, "hours_set": bool(hrs),
                        "parallel": int(r.get("production_capacity") or 1), "dia": flt(r.get("machine_dia")) or None,
                        "gauge": flt(r.get("machine_gauge")) or None, "holidays": hol.get(r.get("holiday_list"), set())}
         out[r.name]["per_day"] = ws_math.capacity_on({**out[r.name], "holidays": set()}, getdate())
@@ -82,12 +83,13 @@ def workstations(stage=None, names=None, frm=None, to=None):
 
 
 def item_fit(items):
-    """{item: {"dia", "gauge"}} from the Item's knitting fields."""
-    f = [x for x in ("knit_dia", "knit_gauge") if _has("Item", x)]
-    if not items or not f:
+    """{item: {"dia", "gauge", "uom"}} from the Item: its knitting fields and stock UOM."""
+    if not items:
         return {}
-    return {r.name: {"dia": flt(r.get("knit_dia")) or None, "gauge": flt(r.get("knit_gauge")) or None}
-            for r in frappe.get_all("Item", filters={"name": ["in", list(items)]}, fields=["name"] + f)}
+    f = [x for x in ("knit_dia", "knit_gauge") if _has("Item", x)]
+    return {r.name: {"dia": flt(r.get("knit_dia")) or None, "gauge": flt(r.get("knit_gauge")) or None,
+                     "uom": r.get("stock_uom") or ""}
+            for r in frappe.get_all("Item", filters={"name": ["in", list(items)]}, fields=["name", "stock_uom"] + f)}
 
 
 def _activities(filters, extra=""):

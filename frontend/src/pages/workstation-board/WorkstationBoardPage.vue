@@ -81,12 +81,12 @@
                   <tr class="mrow" @click="open = open === m.name ? '' : m.name">
                     <th class="m">
                       <div class="item">{{ m.label }}</div>
-                      <div class="sub">{{ fmt(m.per_day) }} kg/day<template v-if="m.dia"> · {{ m.dia }}″ {{ m.gauge }}G</template></div>
+                      <div class="sub">{{ fmt(m.per_day) }} {{ m.uom || 'kg' }}/day<template v-if="m.dia"> · {{ m.dia }}″ {{ m.gauge }}G</template></div>
                       <div v-if="m.missing.length" class="miss">set: {{ m.missing.join(', ') }}</div>
                       <div v-if="notReady(m)" class="miss">{{ notReady(m) }} booking{{ notReady(m) === 1 ? '' : 's' }} waiting for material</div>
                     </th>
                     <td v-for="c in m.cells" :key="c.date" class="c" :class="[cls(c), { wk: isWeekStart(c.date) }]"
-                        :title="c.capacity ? `${dd(c.date)}: ${fmt(c.booked)} of ${fmt(c.capacity)} kg` : `${dd(c.date)}: holiday`">
+                        :title="c.capacity ? `${dd(c.date)}: ${fmt(c.booked)} of ${fmt(c.capacity)} ${m.uom || 'kg'}` : `${dd(c.date)}: holiday`">
                       {{ c.pct == null ? '' : c.pct >= 999 ? '!' : c.pct ? `${c.pct}` : '' }}</td>
                   </tr>
                   <tr v-if="open === m.name" class="detail"><td :colspan="board.dates.length + 1">
@@ -137,8 +137,8 @@
               </tbody>
             </table>
           </div>
-          <div class="foot">Capacity a day = Kg per hour × Working Hours × Production Capacity, from each Workstation; holidays from its Holiday List.
-            The booking's end follows from that capacity. A machine that doesn't fit (stage, dia, gauge) or would go over capacity is refused
+          <div class="foot">Capacity a day = Output per hour (in the machine's Planning UOM) × Working Hours × Production Capacity, from each Workstation; holidays from its Holiday List.
+            The booking's end follows from that capacity. A machine that doesn't fit (stage, unit, dia, gauge) or would go over capacity is refused
             unless an override role gives a reason.</div>
         </section>
       </template>

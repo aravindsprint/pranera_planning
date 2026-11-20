@@ -231,12 +231,13 @@ def recalculate_all():
     """Scheduler (daily): learn lead days, then recalculate every item with demand in the
     history window, or with a result from before (so it can drop to No demand)."""
     learn_lead_days()
+    frappe.db.commit()          # release Re-order Settings: the run below takes minutes
     cfg = load_settings()
     since = add_days(today(), -cfg["history_days"])
     sales, used = demand(since)
     items = set(sales) | set(used) | set(frappe.get_all("Item Re-order Level", pluck="name"))
     items = set(frappe.get_all("Item", filters={"name": ["in", list(items)], "is_stock_item": 1, "disabled": 0}, pluck="name")) if items else set()
-    count = calculate(items, cfg, sales=sales, used=used)
+    count = calculate(items, cfg, sales=sales, used=used, commit_every=COMMIT_EVERY)
     frappe.db.set_single_value("Re-order Settings", {"last_run": now_datetime(), "last_run_items": count})
     frappe.db.commit()
     return count
@@ -251,8 +252,12 @@ def recalculate_now():
     return _("Recalculating in the background — the report updates when it finishes.")
 
 
-def calculate(items, cfg, sales=None, used=None):
-    """Work out and store the numbers for `items`. Returns how many were written."""
+COMMIT_EVERY = 200     # the nightly run commits in batches, so it never holds locks for its whole run
+
+
+def calculate(items, cfg, sales=None, used=None, commit_every=None):
+    """Work out and store the numbers for `items`. Returns how many were written.
+    With `commit_every`, commits after that many items (background runs only)."""
     items = sorted(items)
     if not items:
         return 0
@@ -321,6 +326,8 @@ def calculate(items, cfg, sales=None, used=None):
         }
         _save(code, values)
         written += 1
+        if commit_every and written % commit_every == 0:
+            frappe.db.commit()
     return written
 
 

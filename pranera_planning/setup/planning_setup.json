@@ -1,0 +1,1079 @@
+{
+ "exported_on": "2026-11-20 13:10:00",
+ "from_site": "erptest.pranera.in",
+ "reorder_settings": {
+  "default_cover_days": 30,
+  "default_round_to": 1,
+  "default_safety_days": 5,
+  "default_warehouse": "JV/A101(INWARD) - PSS - PSS",
+  "group_rules": [
+   {
+    "bought_lead_days": 14,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "FABRIC",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 8,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "YARN",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 1,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "DYES",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 1,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "CHEMICALS",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 1,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "CHEM/WET PROCESSING",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 5,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "PAK_POLYBAG",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 8,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "ACC_LABEL",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 5,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "ACC_BUTTON",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 3,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "STATIONERY",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 5,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "PAK_CARTON BOX",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 14,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "ACC_WOVENFABRIC",
+    "round_to": 0,
+    "safety_days": 0
+   },
+   {
+    "bought_lead_days": 14,
+    "cover_days": 0,
+    "demand_basis": "Sales + Consumption",
+    "item_group": "LAYA GARMENTS",
+    "round_to": 0,
+    "safety_days": 0
+   }
+  ],
+  "history_days": 90,
+  "include_bought_lead_days": 0,
+  "item_rows_pick": "Slowest",
+  "lead_history_months": 6,
+  "lead_sources": [
+   {
+    "enabled": 1,
+    "source": "Supplier Items row"
+   },
+   {
+    "enabled": 1,
+    "source": "Supplier's usual lead days"
+   },
+   {
+    "enabled": 1,
+    "source": "Item's Lead Time Days"
+   },
+   {
+    "enabled": 1,
+    "source": "Item-group rule"
+   }
+  ],
+  "lead_time_check": "Block",
+  "lead_time_grace_days": 0,
+  "near_margin": 10,
+  "no_default_supplier": "Latest Purchase Order",
+  "request_grouping": null,
+  "seasons": [],
+  "stage_leads": [
+   {
+    "inhouse_days": 21,
+    "inhouse_orders": 1066,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Dyeing"
+   },
+   {
+    "inhouse_days": 17,
+    "inhouse_orders": 134,
+    "job_work_services": "KNITTING",
+    "jobwork_days": 39,
+    "jobwork_orders": 9,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Knitting"
+   },
+   {
+    "inhouse_days": 7,
+    "inhouse_orders": 68,
+    "job_work_services": "DRYER, STENTER, DYEING + DRYER, BONDING, DYEING + STENTER",
+    "jobwork_days": 6,
+    "jobwork_orders": 1174,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "Job work",
+    "stage": "Finishing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 1,
+    "jobwork_orders": 2,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "Job work",
+    "stage": "YARN"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": "OPEN WIDTH COMPACTING",
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Compacting"
+   },
+   {
+    "inhouse_days": 2,
+    "inhouse_orders": 1,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Printing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Embossing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Raising"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Weaving"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Woven Printing"
+   },
+   {
+    "inhouse_days": 6,
+    "inhouse_orders": 1,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Woven Re-dyeing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Yarn Dyeing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": "HEAT SETTING",
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Washing & Heat Setting"
+   },
+   {
+    "inhouse_days": 7,
+    "inhouse_orders": 83,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Re-dyeing"
+   },
+   {
+    "inhouse_days": 24,
+    "inhouse_orders": 12,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Peach Finishing"
+   },
+   {
+    "inhouse_days": 2,
+    "inhouse_orders": 2,
+    "job_work_services": "HEAT SETTING",
+    "jobwork_days": 23,
+    "jobwork_orders": 2,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Heat Setting"
+   },
+   {
+    "inhouse_days": 21,
+    "inhouse_orders": 3,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Woven Finishing"
+   },
+   {
+    "inhouse_days": 30.5,
+    "inhouse_orders": 4,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "In-house",
+    "stage": "Woven Dyeing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 2,
+    "jobwork_orders": 3,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "Job work",
+    "stage": "Tubular Finishing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": "CUTTING TO PACKING",
+    "jobwork_days": 66,
+    "jobwork_orders": 7,
+    "jobwork_override_days": 0,
+    "override_days": 0,
+    "route": "Job work",
+    "stage": "Garments"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Washing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Panel Washing"
+   },
+   {
+    "inhouse_days": 0,
+    "inhouse_orders": 0,
+    "job_work_services": null,
+    "jobwork_days": 0,
+    "jobwork_orders": 0,
+    "jobwork_override_days": 0,
+    "override_days": 7,
+    "route": "In-house",
+    "stage": "Lamination"
+   }
+  ],
+  "stock_project_pattern": "{YY}STK-{FAMILY}-{PERIOD}-{SEQ}",
+  "stock_project_period": "Quarter",
+  "use_learned_lead_days": 1,
+  "workstation_check": null
+ },
+ "site_config": {
+  "project_stock_reservation_stages": [
+   [
+    "GKF",
+    "Knitting"
+   ],
+   [
+    "HKF",
+    "Heat Setting"
+   ],
+   [
+    "PHKF",
+    "Heat Setting"
+   ],
+   [
+    "WHKF",
+    "Washing & Heat Setting"
+   ],
+   [
+    "WKF",
+    "Washing"
+   ],
+   [
+    "PWKF",
+    "Panel Washing"
+   ],
+   [
+    "DKF",
+    "Dyeing"
+   ],
+   [
+    "DMF",
+    "Dyeing"
+   ],
+   [
+    "RPKF",
+    "Re-dyeing"
+   ],
+   [
+    "TKF",
+    "Tubular Finishing"
+   ],
+   [
+    "SKF",
+    "Finishing"
+   ],
+   [
+    "CKF",
+    "Compacting"
+   ],
+   [
+    "CWF",
+    "Compacting"
+   ],
+   [
+    "PFKF",
+    "Peach Finishing"
+   ],
+   [
+    "PGKF",
+    "Peach Finishing"
+   ],
+   [
+    "RKF",
+    "Raising"
+   ],
+   [
+    "BKF",
+    "Raising"
+   ],
+   [
+    "EKF",
+    "Embossing"
+   ],
+   [
+    "LKF",
+    "Lamination"
+   ],
+   [
+    "PKF",
+    "Printing"
+   ],
+   [
+    "PMF",
+    "Printing"
+   ],
+   [
+    "SMF",
+    "Printing"
+   ],
+   [
+    "GWF",
+    "Weaving"
+   ],
+   [
+    "DWF",
+    "Woven Dyeing"
+   ],
+   [
+    "SWF",
+    "Woven Finishing"
+   ],
+   [
+    "PWF",
+    "Woven Printing"
+   ],
+   [
+    "RPWF",
+    "Woven Re-dyeing"
+   ],
+   [
+    "YRV",
+    "Yarn Dyeing"
+   ],
+   [
+    "MARS",
+    "Garments"
+   ]
+  ]
+ },
+ "supplier_lead_days": {
+  "ACCEL INTERNATIONAL": 14,
+  "AMBAL INDANE GAS SERVICE": 2,
+  "ARKAP KNITS PVT LTD": 13,
+  "ASIA CRYSTAL COMMODITY LLP": 1,
+  "AYM SYNTEX LTD": 35,
+  "BAIRAVA ENTERPRISES": 5,
+  "BARANIPRIYA PRINTERS": 6,
+  "BARATHAN YARNS": 2,
+  "BEEKAYLON SYNTHETICS PRIVATE LIMITED": 49,
+  "BEST KNITTING MILLS PVT LTD": 36,
+  "BEST PAPER PRODUCT": 5,
+  "BHARATH INTERIER": 12,
+  "BHILOSA INDUSTRIES PVT LTD": 7,
+  "COLOR SOLUTIONS": 2,
+  "D.N.H. SPINNERS PVT LTD": 130,
+  "DCC PRINT VISION LLP": 22,
+  "DWARKA ENTERPRISE": 16,
+  "ESWARI ASSOCIATES": 2,
+  "EVEREADY SPINNING MILLS (P) LIMITED": 5,
+  "FLINTEK ENTERPRISES": 6,
+  "GROZ-BECKERT ASIA PRIVATE LTD": 18,
+  "HANGZHOU XIAOCHI TEXTILE CO., LTD": 43,
+  "HARI KRAFTSS": 40,
+  "INDENEED CORPORATION": 2,
+  "IT ZONE": 8,
+  "KARTHIGAI COLOURS": 2,
+  "KONAR TRADERS": 8,
+  "KONGU DYES & CHEMICALS": 2,
+  "KUMARAGIRI SPINNERS PRIVATE LTD": 5,
+  "LAXMI SAGAR PROCESSORS PVT LTD": 11,
+  "MANIAM HARDWARE & STEELS PVT. LTD": 9,
+  "MARUTHI ENGINEERING": 25,
+  "MEERA COTTON & SYNTHETIC MILLS (P) LTD.": 11,
+  "MINNANU TECHNOLOGIES": 2,
+  "MONIKA TRADERS": 22,
+  "NATIONAL SYNTHETICS": 2,
+  "OMEGA OVERSEAS": 10,
+  "PALLAVA TEXTILE LIMITED": 33,
+  "PAVIN ENTERPRISES": 5,
+  "PERFECT FILAMENTS LTD": 18,
+  "PRANERA MARKETING": 1,
+  "PRANERA SERVICES AND SOLUTIONS PVT LTD - SURAT": 2,
+  "R.N. AUTOMATION": 21,
+  "SAKTHI MEENAKSHI FUELS": 2,
+  "SAS AGENCIES": 2,
+  "SATHY HARDWARES": 2,
+  "SHIVA TEXYARN LIMITED": 38,
+  "SHRI ANNAMALAIYAR AGENCIES": 9,
+  "SOFTLINE SALES CORPORATION": 3,
+  "SPIN KNIT TEX TRADE": 14,
+  "SREE ENGINEERING": 44,
+  "SRI BANNARI AMMAN TRADERS": 1,
+  "SRI SUTHARSAN ELECTRICALS": 1,
+  "SRISHA AGENCYS": 4,
+  "SS EQUIPMENTS": 25,
+  "STAAR IMPEX": 4,
+  "SURBHI INDUSTRIES LIMITED": 9,
+  "SURBHI TEXTILES MILLS PVT LTD": 11,
+  "SWASTI CHEM PRIVATE LIMITED": 2,
+  "TEXKNIT": 5,
+  "UNIQUE TECHNOLOGIES": 60,
+  "VAIBHAVLAXMI FILAMENTS PVT LTD": 14,
+  "Vit Traders": 3,
+  "ZENITH LABEL": 7
+ },
+ "workstations": {
+  "FK01/6014/PL/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK02/6014/PL/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK03/6014/PL/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK04/6014/PL/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK05/6014/PL/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK06/6014/PL/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK07/6014/PL/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK08/6014/PL/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK09/8014/PL/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK10/8014/PL/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK11/4014/SJ/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK12/4014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK13/6014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK14/6014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK15/6014/SJ/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK16/6014/SJ/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK17/6014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK18/6014/SJ/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK19/6014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK20/6014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK21/6014/SJ/KH": {
+   "kg_per_hour": 40.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "FK22/6014/SJ/KH": {
+   "kg_per_hour": 20.0,
+   "machine_dia": 0,
+   "machine_gauge": 14,
+   "planning_stage": "Knitting",
+   "planning_uom": "Pcs",
+   "production_capacity": 1
+  },
+  "HTHP JET DYEING-TONYSS-300KGS": {
+   "kg_per_hour": 27.4,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP SOFTLOW-MARVEL-1200KGS": {
+   "kg_per_hour": 109.5,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP SOFTLOW-PROTEX-1000KGS": {
+   "kg_per_hour": 91.2,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP SOFTLOW-PROTEX-750KGS": {
+   "kg_per_hour": 68.4,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP SOFTLOW-TONYSS-900KGS": {
+   "kg_per_hour": 82.1,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Soft Flow(SP)-NUVAS-100KGS": {
+   "kg_per_hour": 10.5,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Soft Flow(SP)-NUVAS-25KGS": {
+   "kg_per_hour": 2.2,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Soft Flow(SP)-NUVAS-300KGS": {
+   "kg_per_hour": 36.0,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Soft Flow(SP)-NUVAS-50KGS": {
+   "kg_per_hour": 4.6,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Soft Flow(SP)-NUVAS-600KGS": {
+   "kg_per_hour": 112.5,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-PRANAV-1000KGS": {
+   "kg_per_hour": 91.2,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-PRANAV-300KGS": {
+   "kg_per_hour": 23.1,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-PRANAV-600KGS": {
+   "kg_per_hour": 63.9,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-RBT-1600KGS": {
+   "kg_per_hour": 134.4,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-RBT-25KGS": {
+   "kg_per_hour": 2.2,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-SHRIJI-50KGS": {
+   "kg_per_hour": 4.6,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP Softflow-TONYS-900KGS": {
+   "kg_per_hour": 82.1,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP-JET DYEING-TONGHUA-1200KGS": {
+   "kg_per_hour": 86.3,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP-JET DYEING-TONGHUA-300KGS": {
+   "kg_per_hour": 24.8,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP-JET DYEING-TONGHUA-50KGS": {
+   "kg_per_hour": 4.6,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "HTHP-JET DYEING-TONGHUA-600KGS": {
+   "kg_per_hour": 80.6,
+   "machine_dia": 0,
+   "machine_gauge": 0,
+   "planning_stage": "Dyeing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "IL01/3428/FK": {
+   "kg_per_hour": 6.3,
+   "machine_dia": 34,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "IL02/3432/FK": {
+   "kg_per_hour": 6.9,
+   "machine_dia": 34,
+   "machine_gauge": 32,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "IL03/3028/FK": {
+   "kg_per_hour": 8.6,
+   "machine_dia": 30,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "IL04/3028/FK": {
+   "kg_per_hour": 8.1,
+   "machine_dia": 30,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ01/2828/PL": {
+   "kg_per_hour": 9.8,
+   "machine_dia": 28,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ02/2624/TR": {
+   "kg_per_hour": 11.6,
+   "machine_dia": 26,
+   "machine_gauge": 24,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ03/2624/TR": {
+   "kg_per_hour": 8.0,
+   "machine_dia": 26,
+   "machine_gauge": 24,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ04/2828/FK": {
+   "kg_per_hour": 16.5,
+   "machine_dia": 28,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ05/2828/FK": {
+   "kg_per_hour": 16.5,
+   "machine_dia": 28,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ06/2828/FK": {
+   "kg_per_hour": 16.5,
+   "machine_dia": 28,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ07/2828/UT": {
+   "kg_per_hour": 9.7,
+   "machine_dia": 28,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ08/3028/UT": {
+   "kg_per_hour": 11.6,
+   "machine_dia": 30,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ09/3224/UT": {
+   "kg_per_hour": 9.0,
+   "machine_dia": 32,
+   "machine_gauge": 24,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ10/3428/UT": {
+   "kg_per_hour": 11.4,
+   "machine_dia": 34,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ11/3432/JG": {
+   "kg_per_hour": 11.9,
+   "machine_dia": 34,
+   "machine_gauge": 32,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ12/3026/JG": {
+   "kg_per_hour": 13.9,
+   "machine_dia": 30,
+   "machine_gauge": 26,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ13/3026/JG": {
+   "kg_per_hour": 14.1,
+   "machine_dia": 30,
+   "machine_gauge": 26,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ14/3428/FK": {
+   "kg_per_hour": 11.6,
+   "machine_dia": 34,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  },
+  "SJ15/3428/FK": {
+   "kg_per_hour": 20.2,
+   "machine_dia": 34,
+   "machine_gauge": 28,
+   "planning_stage": "Knitting",
+   "planning_uom": "Kgs",
+   "production_capacity": 1
+  }
+ }
+}

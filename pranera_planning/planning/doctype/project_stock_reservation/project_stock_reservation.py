@@ -34,7 +34,11 @@ class ProjectStockReservation(Document):
 
         project = batch_source_project(self.batch_no)
         if not project:
-            frappe.throw(_("Batch {0} belongs to no project: it wasn't purchased under one (Purchase Receipt) or produced for exactly one (Work Order / Subcontracting Receipt).").format(self.batch_no))
+            # old stock that came under no project: reservable, with no source project
+            if self.purchase_project:
+                frappe.throw(_("Batch {0} belongs to no project, not {1}: leave the source project empty.").format(
+                    self.batch_no, self.purchase_project))
+            return
         if not same_project(project, self.purchase_project):
             frappe.throw(_("Batch {0} belongs to project {1}, not {2}.").format(self.batch_no, project, self.purchase_project))
 
@@ -70,7 +74,7 @@ class ProjectStockReservation(Document):
         An unclassified *source* project (project_type blank) is let through with a
         warning; one typed some other way (Internal, External, ...) is blocked.
         """
-        purchase_type = frappe.db.get_value("Project", self.purchase_project, "project_type")
+        purchase_type = frappe.db.get_value("Project", self.purchase_project, "project_type") if self.purchase_project else None
 
         if purchase_type and purchase_type not in SOURCE_TYPES:
             frappe.throw(_("{0} is typed as {1}, not Purchase or Production — check you have the right project.").format(self.purchase_project, purchase_type))
@@ -89,7 +93,7 @@ class ProjectStockReservation(Document):
                 frappe.throw(_("{0} is {1} — stock can only be reserved for an Open project.").format(
                     self.production_project, production_status))
 
-        unclassified = [self.purchase_project] if not purchase_type else []
+        unclassified = [self.purchase_project] if self.purchase_project and not purchase_type else []
         if unclassified:
             frappe.msgprint(_(
                 "Project Type is not set on {0}. Set it on the Project record so a mix-up here gets caught automatically."

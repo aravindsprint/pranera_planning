@@ -146,3 +146,45 @@ class TestNeedText(unittest.TestCase):
         self.assertEqual(self.how("make", "saved plan"), "make 2,000 (saved plan)")
         self.assertEqual(self.how("top_up", "saved plan"), "level 2,000 (saved plan)")
         self.assertEqual(self.how("top_up"), "level 2,000")
+
+
+class TestPicks(unittest.TestCase):
+    LOTS = [{"batch_no": "B1", "warehouse": "Stores", "roll_no": "", "qty": 975, "project": "25PUR001"},
+            {"batch_no": "B2", "warehouse": "Stores", "roll_no": "", "qty": 1000, "project": "PROJ-0004"}]
+
+    def test_chosen_lots_in_order_capped_at_free(self):
+        from pranera_planning.plan_math import apply_picks
+        got, gone = apply_picks(self.LOTS, [{"key": "B2|Stores|", "qty": 600}, {"key": "B1|Stores|", "qty": 2000},
+                                            {"key": "B9|Stores|", "qty": 5}])
+        self.assertEqual([(l["batch_no"], l["qty"]) for l in got], [("B2", 600.0), ("B1", 975.0)])
+        self.assertEqual(gone, ["B9|Stores|"])
+
+
+class TestComingOpen(unittest.TestCase):
+    """SAL-ORD-2026-00004: finished 1,500 is coming on a draft Manufacture request (with dyed 1,500);
+    greige 1,500 is already held. The dyed and greige levels must stay in the plan."""
+
+    def plan(self, coming_open):
+        from pranera_planning.plan_math import build_plan, scenario_rules
+        items = {"SKF": {"bom": [("DKF", 1.0)], "made": True, "coming": 1500, "coming_open": coming_open},
+                 "DKF": {"bom": [("GKF", 1.0)], "made": True, "coming": 1500, "coming_open": 1500},
+                 "GKF": {"bom": [("YARN", 1.0)], "made": True, "own": 1500},
+                 "YARN": {}}
+        p = build_plan([{"item": "SKF", "qty": 1500, "mode": "need"}], items, scenario_rules("Production", "Made to order"))
+        return {r["item"]: r for r in p["levels"]}
+
+    def test_levels_below_what_is_coming_stay_in_the_plan(self):
+        lv = self.plan(1500)
+        self.assertEqual(sorted(lv), ["DKF", "GKF", "SKF"])
+        self.assertEqual((lv["DKF"]["need"], lv["DKF"]["coming"], lv["DKF"]["request"]), (1500, 1500, 0))
+        self.assertEqual((lv["GKF"]["own"], lv["GKF"]["request"]), (1500, 0))           # held greige covers dyeing
+        self.assertIn("1,500 coming", lv["DKF"]["how"][0][1])
+
+    def test_coming_is_counted_once(self):
+        from pranera_planning.plan_math import coming_total
+        lv = self.plan(1500)
+        self.assertEqual(lv["DKF"]["feeds_coming"], 1500)
+        self.assertEqual(coming_total(list(lv.values())), 1500)        # not 3,000
+
+    def test_coming_already_supplied_is_not_planned_again(self):
+        self.assertEqual(sorted(self.plan(0)), ["SKF"])      # e.g. a Work Order with its material transferred

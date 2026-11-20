@@ -68,6 +68,24 @@ export const pages = [
   },
 
   {
+    path: 'ta-reports',
+    title: 'T&A Reports',
+    icon: 'pi pi-chart-bar',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/ta-reports/TaReportsPage.vue'),
+  },
+
+  {
+    path: 'workstation-board',
+    title: 'Workstation Board',
+    icon: 'pi pi-th-large',
+    section: 'Planning',
+    nav: true,
+    component: () => import('@/pages/workstation-board/WorkstationBoardPage.vue'),
+  },
+
+  {
     path: 'supplier-lead-days',
     title: 'Supplier Lead Days',
     icon: 'pi pi-truck',

@@ -28,7 +28,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, flt, getdate, now_datetime, today
 
-from pranera_planning.plan_math import lines_to_save, allocate_lots, build_plan, scenario_rules
+from pranera_planning.plan_math import coming_total, apply_picks, lot_key, lines_to_save, allocate_lots, build_plan, scenario_rules
 from pranera_planning.reorder import _top_group, load_settings
 from pranera_planning.reorder_math import (
     DEFAULT_STOCK_PATTERN, deepest, next_seq, normalise_family, period_of, stock_project_name,
@@ -123,11 +123,15 @@ def counts_as_own(lot_project, project, order_type, kinds):
     return (bool(project) and same_project(lot_project, project)) or kinds.get(lot_project) == MTS
 
 
-def counts_as_borrowable(lot, project, order_type, kinds):
-    """Whether a free lot is another project's stock the plan may borrow (reserve): purchased
-    under a project that isn't made to order, not produced for it, and not the plan's own."""
-    return (bool(lot["project"]) and not lot["produced"] and kinds.get(lot["project"]) != MTO
-            and not counts_as_own(lot["project"], project, order_type, kinds))
+def can_borrow(lot, project, order_type, kinds):
+    """Whether free stock outside this plan's own may be borrowed (reserved) by it: purchased,
+    not produced, stock of any project that is not made to order — a made-to-stock project, an
+    old project with no Order type — and old stock that came under no project at all."""
+    if lot.get("produced"):
+        return False
+    if lot.get("project") and kinds.get(lot["project"]) == MTO:
+        return False
+    return not counts_as_own(lot.get("project"), project, order_type, kinds)
 
 
 def lot_project_kinds(lots):
@@ -141,11 +145,9 @@ def lot_project_kinds(lots):
 
 def reservable_summary(item_codes, project, order_type=MTO):
     """{item: summarise_free_stock(...)} of the stock a plan for `project` could reserve right
-    now — its own free stock plus what it may borrow — in the shape the free-stock check uses.
-
-    The free-stock check on a Purchase Material Request that a plan created measures against
-    this, not against all free stock: stock with no project, unnumbered rolls and stock
-    produced for another project can't be reserved by the plan, so the plan buys instead,
+    now — its own free stock plus what it may borrow (can_borrow) — in the shape the free-stock
+    check uses. The check on a Purchase Material Request that a made-to-order plan created
+    measures against this: unnumbered rolls can't be reserved by a plan, so it buys instead,
     and the check must not then refuse the very request the plan sized."""
     lots = free_lots(item_codes)
     kinds = lot_project_kinds(lots)
@@ -153,8 +155,7 @@ def reservable_summary(item_codes, project, order_type=MTO):
     for item in {c for c in item_codes if c}:
         rows = [{"batch_no": l["batch_no"], "project": l["project"], "free_qty": l["qty"]}
                 for l in lots.get(item, [])
-                if counts_as_own(l["project"], project, order_type, kinds)
-                or counts_as_borrowable(l, project, order_type, kinds)]
+                if counts_as_own(l["project"], project, order_type, kinds) or can_borrow(l, project, order_type, kinds)]
         out[item] = summarise_free_stock(rows, project)
     return out
 
@@ -257,6 +258,32 @@ def coming(project, items):
     return qty, src
 
 
+def coming_open(project, items):
+    """{item: qty} of the project's own coming that still needs its input: Manufacture Material
+    Requests not yet made into Work Orders (drafts too), and open Work Orders' quantity whose
+    material isn't transferred yet (qty − the larger of produced and transferred). Job work and
+    purchases are left out: a subcontracting order's input is tracked by the subcontracting
+    order itself, and bought items have no input."""
+    out = defaultdict(float)
+    if not project or not items:
+        return out
+    v = {"p": project, "items": tuple(items)}
+    for item, q in frappe.db.sql(f"""SELECT production_item,
+            SUM(GREATEST(qty - GREATEST(produced_qty, IF(skip_transfer = 1, 0, material_transferred_for_manufacturing)), 0))
+            FROM `tabWork Order` WHERE docstatus = 1 AND status NOT IN {DONE} AND project = %(p)s
+            AND production_item IN %(items)s GROUP BY production_item""", v):
+        out[item] += flt(q)
+    proj = "(mri.project = %(p)s" + (" OR mri.for_project = %(p)s)" if _has("Material Request Item", "for_project") else ")")
+    for item, q in frappe.db.sql(f"""SELECT mri.item_code, SUM(GREATEST(mri.stock_qty - mri.ordered_qty, 0))
+            FROM `tabMaterial Request Item` mri
+            JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mr.docstatus < 2
+             AND IFNULL(mr.status, '') NOT IN ('Stopped', 'Cancelled', 'Ordered', 'Transferred', 'Issued', 'Received')
+             AND mr.material_request_type = 'Manufacture'
+            WHERE {proj} AND mri.item_code IN %(items)s GROUP BY mri.item_code""", v):
+        out[item] += flt(q)
+    return out
+
+
 def last_service(items):
     """{item: the job-work service its most recent Purchase Material Request bought against
     one of its BOMs} — e.g. which fabrics go to the stenter and which to the dryer."""
@@ -352,6 +379,17 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     project = proj.get("project")
     held = held_for(project, codes)
     come, come_src = coming(project, codes)
+    come_open = coming_open(project, [c for c in codes if c in boms]) if rules["explode"] else {}
+    # quantity the user moves from the project's Manufacture requests to job work (mr_moves.py)
+    from pranera_planning.mr_moves import movable
+    can_move = movable(project, [c for c in codes if c in boms]) if rules["explode"] and project else {}
+    moved = {}
+    for code, q in (payload.get("moves") or {}).items():
+        q = min(flt(q), flt(can_move.get(code)), flt(come.get(code)))
+        if q > EPS and (payload.get("routes") or {}).get(code) == "Job work":
+            moved[code] = q
+            come[code] = flt(come.get(code)) - q
+            come_open[code] = max(0.0, flt(come_open.get(code)) - q)
 
     kinds = lot_project_kinds(lots)
 
@@ -359,7 +397,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         return counts_as_own(lot["project"], project, order_type, kinds)
 
     def is_borrowable(lot):
-        return counts_as_borrowable(lot, project, order_type, kinds)
+        return can_borrow(lot, project, order_type, kinds)
 
     groups = {}
     for code, it in info.items():
@@ -368,7 +406,9 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         "Item Group", filters={"name": ["in", list(set(groups.values()))]}, fields=["name", "lft", "rgt"])} if groups else {}
 
     data = {}
-    own_lots, borrow_lots = {}, {}
+    own_lots, borrow_lots, all_borrow, picked_by_user = {}, {}, {}, set()
+    picks = payload.get("picks") or {}
+    pick_warnings = []
     for code in codes:
         it = info.get(code) or frappe._dict()
         made = rules["explode"] and code in boms
@@ -376,9 +416,16 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         round_to = 1.0 if made else (flt(rule.round_to) if rule and rule.round_to else cfg["round_to"])
         own_lots[code] = [l for l in lots.get(code, []) if is_own(l)]
         borrow_lots[code] = [l for l in lots.get(code, []) if is_borrowable(l)]
+        all_borrow[code] = list(borrow_lots[code])
+        if code in picks:                               # the user chose which lots to borrow
+            borrow_lots[code], gone = apply_picks(borrow_lots[code], picks[code])
+            picked_by_user.add(code)
+            if gone:
+                pick_warnings.append(_("{0}: {1} chosen lot(s) are no longer free and were left out.").format(code, len(gone)))
         data[code] = {"made": made, "bom": rows.get(code, []), "round_to": round_to,
                       "own": sum(l["qty"] for l in own_lots[code]) + flt(held.get(code)),
-                      "coming": flt(come.get(code)), "borrowable": sum(l["qty"] for l in borrow_lots[code])}
+                      "coming": flt(come.get(code)), "coming_open": flt(come_open.get(code)),
+                      "borrowable": sum(l["qty"] for l in borrow_lots[code])}
 
     plan = build_plan(lines, data, rules)
     stage_rows = {(r.stage or "").strip().lower(): r for r in settings.stage_leads}
@@ -399,7 +446,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     routes = (payload.get("routes") or {})
     chosen_services = (payload.get("services") or {})
     previous = last_service([r["item"] for r in plan["levels"] if r["made"]])
-    levels, reservations, requests, warnings = [], [], {"Manufacture": [], "Job work": [], "Purchase": []}, []
+    levels, reservations, requests, warnings = [], [], {"Manufacture": [], "Job work": [], "Purchase": []}, list(pick_warnings)
     needed_by = str(getdate(payload.get("needed_by") or add_days(today(), 30)))
 
     for r in plan["levels"]:
@@ -437,7 +484,9 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                 requests["Purchase"].append({"item_code": code, "qty": r["request"]})
 
         levels.append({**{k: r[k] for k in ("item", "need", "own", "coming", "reserve", "short", "request", "made", "depth")},
+                       "feeds_coming": r.get("feeds_coming", 0.0),
                        "how": [t for _q, t in r["how"]], "item_name": it.get("item_name"), "uom": it.get("stock_uom"),
+                       "coming_all": flt((data.get(code) or {}).get("coming")),
                        "stage": stage or ("Bought" if not r["made"] else ""), "route": route, "stage_days": days_route,
                        "service": service if r["made"] else None, "service_options": options if r["made"] else [],
                        "bom": boms.get(code) if r["made"] else None, "bom_options": bom_options.get(code, []) if r["made"] else [],
@@ -445,7 +494,14 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "service_from": ("this item's last job work" if previous.get(code) == service and service else
                                         "the stage's most common" if service else ""),
                        "coming_from": come_src.get(code, []), "held": held_here,
-                       "reserve_from": sorted({l["project"] for l in borrow_lots[code]})[:3] if r["reserve"] > EPS else []})
+                       "reserve_from": sorted({l["project"] or "old stock (no project)" for l in allocate_lots(borrow_lots[code], r["reserve"])[0]})[:3]
+                       if r["reserve"] > EPS else [],
+                       "movable": flt(can_move.get(code)) if r["made"] else 0.0, "moved": moved.get(code, 0.0),
+                       "lots_picked": code in picked_by_user,
+                       "lots": [{"key": lot_key(l), "project": l["project"], "batch_no": l["batch_no"], "warehouse": l["warehouse"],
+                                 "roll_no": l.get("roll_no") or "", "free": round(l["qty"], 3)} for l in all_borrow.get(code, [])],
+                       "lots_taken": {lot_key(l): round(l["qty"], 3) for l in
+                                      allocate_lots(borrow_lots[code], r["reserve"])[0]} if r["reserve"] > EPS else {}})
 
     # where each request expects the goods: decided here, so a missing warehouse is a warning on the
     # proposal instead of a "Warehouse is mandatory" error from Create
@@ -468,25 +524,42 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     # bought levels: when the usual supplier would deliver an order placed today
     arrivals = bought_arrivals([l["item"] for l in levels if not l["made"]], info, gbounds, cfg)
     for l in levels:
+        if not l["made"] and arrivals.get(l["item"]):
+            l.update(arrivals[l["item"]])
+    # When each level is needed: worked back from Needed by through the stages above it (the
+    # same schedule as the Time and Action plan), so bought yarn is due when Knitting starts,
+    # not on the delivery date.
+    from pranera_planning.ta_math import STAGE, BOUGHT, schedule
+    need_on = {a["item_code"]: a["planned_end"] for a in schedule(levels, needed_by) if a["kind"] in (STAGE, BOUGHT)}
+    for l in levels:
+        l["needed_on"] = need_on.get(l["item"])
         a = arrivals.get(l["item"])
         if l["made"] or not a:
             continue
-        l.update(a)
-        if l["request"] > EPS and a["arrives_by"] and getdate(a["arrives_by"]) > getdate(needed_by):
+        due = l["needed_on"] or needed_by
+        if l["request"] > EPS and a["arrives_by"] and getdate(a["arrives_by"]) > getdate(due):
             who = a["supplier"] or _("its supplier")
-            warnings.append(_("{0}: needed by {1}, but {2} usually takes {3} days, so an order placed today arrives "
-                              "around {4}. Move Needed by, or buy from a faster supplier.").format(
-                l["item"], needed_by, who, _days(a["lead_days"]), a["arrives_by"]))
+            warnings.append(_("{0}: needed in stores by {1} for the stages after it to finish by {2}, but {3} usually takes "
+                              "{4} days, so an order placed today arrives around {5} ({6} days late). Move Needed by, "
+                              "shorten a stage, or buy from a faster supplier.").format(
+                l["item"], due, needed_by, who, _days(a["lead_days"]), a["arrives_by"],
+                (getdate(a["arrives_by"]) - getdate(due)).days))
 
     return {"project": proj, "order_type": order_type, "rules": rules, "needed_by": needed_by,
             "missing_warehouse": sorted(set(missing)),
             "sales_order": payload.get("sales_order") if order_type == MTO else None,
             "lines": lines, "levels": levels, "reservations": reservations, "requests": requests, "warnings": warnings,
+            "moves": [{"item": c, "qty": q} for c, q in moved.items()],
             "stock_before": {ln["item"]: flt((data.get(ln["item"]) or {}).get("own")) + flt((data.get(ln["item"]) or {}).get("coming"))
                              for ln in lines},
-            "totals": {"own": sum(l["own"] for l in levels), "coming": sum(l["coming"] for l in levels),
+            "totals": {"own": sum(l["own"] for l in levels), "coming": coming_total(levels),
+                       "coming_lines": [{"item": l["item"], "stage": l["stage"], "qty": l["coming"], "depth": l["depth"]}
+                                        for l in levels if l["coming"] > EPS],
                        "reserve": sum(l["reserve"] for l in levels),
-                       "requests": sum(1 for k in requests if requests[k]), "request_lines": sum(len(v) for v in requests.values())}}
+                       "requests": (sum(len(v) for v in requests.values()) if per_item_requests(settings)
+                                    else sum(1 for k in requests if requests[k])),
+                       "request_lines": sum(len(v) for v in requests.values())},
+            "per_item_requests": per_item_requests(settings)}
 
 
 def _days(x):
@@ -575,11 +648,17 @@ def _fill_required_dates(doc):
             doc.set(df.fieldname, today() if df.fieldtype == "Date" else now_datetime())
 
 
+def per_item_requests(settings):
+    """Re-order Settings › Material Requests from a plan: one per item (default) or one per kind."""
+    return (settings.get("request_grouping") or "One per item") != "One per kind"
+
+
 def _create_one(prop):
     if prop.get("missing_warehouse"):
         frappe.throw(_("No warehouse found for {0}. Set the item's Default Warehouse, or Re-order Settings › "
                        "Warehouse for planned requests, then create the plan again.").format(", ".join(prop["missing_warehouse"])),
                      title=_("Warehouse missing"))
+    settings = frappe.get_single("Re-order Settings")
     comp = company()
     proj = prop["project"]
     project = proj.get("project")
@@ -618,35 +697,50 @@ def _create_one(prop):
         doc.insert()
         made_res.append(doc.name)
 
+    # quantity moved to job work: take it off the Manufacture requests first
+    from pranera_planning.mr_moves import reduce
+    moved_notes = []
+    for mv in prop.get("moves") or []:
+        moved_notes += reduce(project, mv["item"], mv["qty"])
+
     made_mr = []
     kinds = {"Manufacture": "Manufacture", "Job work": "Purchase", "Purchase": "Purchase"}
     all_codes = {ln["item_code"] for lines in prop["requests"].values() for ln in lines}
     uoms = dict(frappe.get_all("Item", filters={"name": ["in", list(all_codes)]}, fields=["name", "stock_uom"], as_list=True)) if all_codes else {}
-    for kind, lines in prop["requests"].items():
-        if not lines:
-            continue
-        mr = frappe.get_doc({"doctype": "Material Request", "material_request_type": kinds[kind], "company": comp,
-                             "transaction_date": today(), "schedule_date": prop["needed_by"]})
-        if _has("Material Request", "for_project"):
-            mr.for_project = project
-        if prop["order_type"] == MTS and _has("Material Request", "from_stock_plan"):
-            mr.from_stock_plan = 1                     # buys for stock on purpose: not blocked by free stock
-        if prop["order_type"] == MTO and _has("Material Request", "from_project_plan"):
-            mr.from_project_plan = 1                   # sized after reserving what it could: checked against that
-        for ln in lines:
-            uom = uoms.get(ln["item_code"])
-            row = {"item_code": ln["item_code"], "qty": ln["qty"], "schedule_date": prop["needed_by"], "project": project,
-                   "uom": uom, "stock_uom": uom, "conversion_factor": 1, "warehouse": ln["warehouse"]}
-            if prop["order_type"] == MTO and prop.get("sales_order") and ln.get("on_sales_order"):
-                # ERPNext refuses a Work Order whose item isn't on the Sales Order it names, so
-                # inputs (greige for a dyed order) carry only the project
-                row["sales_order"] = prop["sales_order"]
-            if ln.get("bom_no"):
-                row["bom_no"] = ln["bom_no"]
-            if _has("Material Request Item", "for_project"):
-                row["for_project"] = project
-            mr.append("items", row)
-        _fill_required_dates(mr)
-        mr.insert()
-        made_mr.append({"name": mr.name, "kind": kind, "lines": len(lines)})
-    return {"project": project, "project_name": proj.get("project_name"), "reservations": made_res, "requests": made_mr}
+    per_item = per_item_requests(settings)
+    for kind, all_lines in prop["requests"].items():
+        for lines in ([[ln] for ln in all_lines] if per_item else [all_lines]):
+            if not lines:
+                continue
+            mr = frappe.get_doc({"doctype": "Material Request", "material_request_type": kinds[kind], "company": comp,
+                                 "transaction_date": today(), "schedule_date": prop["needed_by"]})
+            if _has("Material Request", "for_project"):
+                mr.for_project = project
+            if prop["order_type"] == MTS and _has("Material Request", "from_stock_plan"):
+                mr.from_stock_plan = 1                     # buys for stock on purpose: not blocked by free stock
+            if prop["order_type"] == MTO and _has("Material Request", "from_project_plan"):
+                mr.from_project_plan = 1                   # sized after reserving what it could: checked against that
+            for ln in lines:
+                uom = uoms.get(ln["item_code"])
+                row = {"item_code": ln["item_code"], "qty": ln["qty"], "schedule_date": prop["needed_by"], "project": project,
+                       "uom": uom, "stock_uom": uom, "conversion_factor": 1, "warehouse": ln["warehouse"]}
+                if prop["order_type"] == MTO and prop.get("sales_order") and ln.get("on_sales_order"):
+                    # ERPNext refuses a Work Order whose item isn't on the Sales Order it names, so
+                    # inputs (greige for a dyed order) carry only the project
+                    row["sales_order"] = prop["sales_order"]
+                if ln.get("bom_no"):
+                    row["bom_no"] = ln["bom_no"]
+                if _has("Material Request Item", "for_project"):
+                    row["for_project"] = project
+                mr.append("items", row)
+            _fill_required_dates(mr)
+            mr.insert()
+            made_mr.append({"name": mr.name, "kind": kind, "lines": len(lines)})
+    # Time and Action plan: built from the same proposal; a failure never stops Create
+    try:
+        from pranera_planning.ta import build_from_proposal
+        build_from_proposal(project, prop)
+    except Exception:
+        frappe.log_error(title=f"Time and Action plan not built for {project}")
+    return {"project": project, "project_name": proj.get("project_name"), "reservations": made_res, "requests": made_mr,
+            "moved": moved_notes}

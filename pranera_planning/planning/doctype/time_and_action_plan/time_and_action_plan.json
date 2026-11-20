@@ -1,0 +1,139 @@
+{
+ "actions": [],
+ "creation": "2026-10-06 10:00:00.000000",
+ "modified": "2026-10-06 10:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Time and Action Plan",
+ "autoname": "field:project",
+ "naming_rule": "By fieldname",
+ "track_changes": 1,
+ "title_field": "project",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "delete": 1,
+   "export": 1,
+   "share": 1
+  },
+  {
+   "role": "Manufacturing Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Projects Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Manufacturing User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  },
+  {
+   "role": "Projects User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "report": 1
+  },
+  {
+   "role": "Stock User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "report": 1
+  }
+ ],
+ "fields": [
+  {
+   "fieldname": "project",
+   "label": "Project",
+   "fieldtype": "Link",
+   "options": "Project",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "order_type",
+   "label": "Order type",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sales_order",
+   "label": "Sales Order",
+   "fieldtype": "Link",
+   "options": "Sales Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "label": "Customer",
+   "fieldtype": "Link",
+   "options": "Customer",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_h",
+   "label": "",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "deliver_on",
+   "label": "Deliver / needed by",
+   "fieldtype": "Date",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "generated_on",
+   "label": "Built from the plan on",
+   "fieldtype": "Datetime",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_a",
+   "label": "Activities",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "activities",
+   "label": "Activities",
+   "fieldtype": "Table",
+   "options": "Time and Action Activity"
+  }
+ ],
+ "field_order": [
+  "project",
+  "order_type",
+  "sales_order",
+  "customer",
+  "column_break_h",
+  "deliver_on",
+  "generated_on",
+  "section_a",
+  "activities"
+ ]
+}

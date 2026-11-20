@@ -63,9 +63,9 @@ class TestPropose(unittest.TestCase):
         P.last_service = lambda items: {SKF: "DRYER"}                      # this fabric last went to the dryer
         P.request_warehouse = lambda item, comp, settings, **kw: ("Stores - PSS", "item default")
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
-            [("26PTIN1710", "Made to order"), ("25PUR001", ""), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
+            [("26PTIN1710", "Made to order"), ("25PUR001", "Made to stock"), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
 
-    def run_mto(self):
+    def run_mto(self, picks=None):
         P = self.P
         P.free_lots = lambda codes: {
             DKF: [lot("DKF-B1", 98, "26PTIN1710", produced=True)],
@@ -77,7 +77,18 @@ class TestPropose(unittest.TestCase):
         self.f.db.get_value = lambda dt, name, fields=None, **kw: _dict(name="26PTIN1710", project_name="26PTIN1710",
                                                                          project_type="Production", status="Open", customer=None)
         return P.propose({"order_type": "Made to order", "project": "26PTIN1710", "sales_order": "SO-1", "needed_by": "2026-11-15",
-                          "lines": [{"item": SKF, "qty": 2000}, {"item": GKF, "qty": 300}]})[0]
+                          "lines": [{"item": SKF, "qty": 2000}, {"item": GKF, "qty": 300}], "picks": picks or {}})[0]
+
+    def test_who_can_be_borrowed_from(self):
+        can, mts, mto = self.P.can_borrow, "Made to stock", "Made to order"
+        kinds = {"25PUR001": mts, "PTIN1710": mto}               # PROJ-0002: no Order type
+        lot = lambda p, produced=False: {"project": p, "produced": produced}
+        self.assertTrue(can(lot("25PUR001"), "SAL-ORD-1", mto, kinds))
+        self.assertTrue(can(lot("PROJ-0002"), "SAL-ORD-1", mto, kinds))      # no Order type: free
+        self.assertTrue(can(lot(None), "SAL-ORD-1", mto, kinds))             # old stock, no project
+        self.assertFalse(can(lot("PTIN1710"), "SAL-ORD-1", mto, kinds))      # another order's
+        self.assertFalse(can(lot("25PUR001", produced=True), "SAL-ORD-1", mto, kinds))
+        self.assertFalse(can(lot(None), "26STK-YARN-Q4-01", mts, kinds))     # stock plan: it's own, not borrowed
 
     def test_what_counts_as_own_stock(self):
         own, kinds = self.P.counts_as_own, {"25PUR001": "Made to stock", "PTIN1710": "Made to order"}
@@ -105,6 +116,15 @@ class TestPropose(unittest.TestCase):
         borrowed = {r["item_code"]: (r["project"], r["qty"]) for r in p["reservations"] if r["kind"] == "borrow"}
         self.assertEqual(borrowed, {YPP: ("25PUR001", 975), YSP: ("25PUR001", 60)})
         self.assertNotIn("GKF-X", [r["batch_no"] for r in p["reservations"]])              # produced for 26PTIN1645: theirs
+
+    def test_lots_chosen_by_hand(self):
+        key = next(l["key"] for l in [lv for lv in self.run_mto()["levels"] if lv["item"] == YPP][0]["lots"])
+        p = self.run_mto({YPP: [{"key": key, "qty": 300}]})
+        lv = {l["item"]: l for l in p["levels"]}
+        borrowed = [r for r in p["reservations"] if r["kind"] == "borrow" and r["item_code"] == YPP]
+        self.assertEqual([r["qty"] for r in borrowed], [300])                        # exactly what was chosen
+        self.assertTrue(lv[YPP]["lots_picked"])
+        self.assertEqual(lv[YPP]["lots"][0]["free"], 975)                              # the picker still lists the whole lot
 
     def test_mto_requests(self):
         p = self.run_mto()
@@ -212,11 +232,11 @@ class TestPropose(unittest.TestCase):
                                            lot("G-BUY", 100, "25PUR001", roll="R1"),        # purchased elsewhere: borrowable
                                            lot("G-MADE", 500, "26PTIN1645", produced=True), # produced for another: not
                                            lot("G-MTO", 70, "26PTIN1710X"),                 # unknown project kind: borrowable
-                                           lot("G-NONE", 300, None)]}                       # no project: can't be reserved
+                                           lot("G-NONE", 300, None)]}                       # old stock, no project: borrowable (one rule)
         out = P.reservable_summary([GKF], "26PTIN1710")[GKF]
         self.assertEqual(out["own"], 40)
         self.assertEqual(out["elsewhere"], 170)
-        self.assertEqual(out["unassigned"], 0)
+        self.assertEqual(out["unassigned"], 300)
 
     def test_required_dates_are_filled_with_today(self):
         class Doc(_dict):

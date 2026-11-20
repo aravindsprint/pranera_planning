@@ -37,21 +37,37 @@
         <div v-if="data.project.sales_order" class="foot">Ready stock ships only against {{ data.project.sales_order }}: a Sales Invoice or Delivery Note for another order is refused.</div>
       </section>
 
+      <!-- made to stock: where the programme stands -->
+      <div v-if="!mto && pg" class="pg" :class="pgTone" role="status">
+        <template v-if="pg.closed">
+          <b>Programme closed.</b> Its stock stays free for any order; new plans for {{ data.project.family || 'this family' }} go to the current period's project.
+        </template>
+        <template v-else>
+          <div>
+            <template v-if="pg.state === 'at_level'"><b>At level: nothing to plan.</b> Free stock covers every target.</template>
+            <template v-else-if="pg.state === 'below'"><b>Below level:</b> {{ belowText }} to buy.</template>
+            <template v-if="pg.period_over"> <b>{{ pg.period || 'Its period' }} is over</b> — close the programme when you're done with it.</template>
+          </div>
+          <button v-if="pg.period_over" class="btn btn-outline" :disabled="closing" @click="closeProgramme">{{ closing ? 'Closing…' : 'Close programme' }}</button>
+        </template>
+      </div>
+
       <!-- made to stock: the programme -->
-      <section v-else class="card flush">
+      <section v-if="!mto" class="card flush">
         <div class="card__head"><h2 class="h2">Stock programme</h2><span class="sub">free for any order to reserve</span></div>
         <p v-if="!data.rows.length" class="empty">No plan saved yet — plan it in the Plan tab.</p>
         <table v-else class="data-table">
-          <thead><tr><th>Item</th><th class="num">Target</th><th class="num">Held</th><th class="num">Reserved by orders</th><th class="num">Free now</th><th class="num">In production</th><th class="num">Free after plan</th></tr></thead>
+          <thead><tr><th>Item</th><th class="num">Target</th><th class="num">Held</th><th class="num">Reserved by orders</th><th class="num">Free now</th><th class="num">In production</th><th class="num">Free after plan</th><th class="num">To plan</th></tr></thead>
           <tbody>
             <tr v-for="r in data.rows" :key="r.item">
               <td><div class="item">{{ r.item }}</div><div class="sub">{{ r.item_name !== r.item ? r.item_name : '' }}</div></td>
-              <td class="num">{{ r.mode === 'make' ? `make ${fmt(r.target)}` : fmt(r.target) }}</td>
+              <td class="num">{{ r.mode === 'make' ? `make ${fmt(r.target)}` : `level ${fmt(r.target)}` }}</td>
               <td class="num">{{ fmt(r.held) }}</td>
               <td class="num" :class="{ orange: r.reserved_by_orders }">{{ fmt(r.reserved_by_orders) }}</td>
               <td class="num"><b>{{ fmt(r.free_now) }}</b></td>
               <td class="num" :class="{ blue: r.in_production }">{{ fmt(r.in_production) }}</td>
               <td class="num"><b>{{ fmt(r.free_after_plan) }}</b></td>
+              <td class="num" :class="{ bad: r.to_plan > 0, good: r.to_plan === 0 }">{{ r.to_plan == null ? '—' : (r.to_plan > 0 ? fmt(r.to_plan) : '✓ 0') }}</td>
             </tr>
           </tbody>
         </table>
@@ -93,7 +109,9 @@
 
       <div class="actions">
         <button class="btn btn-outline" @click="$emit('go', 'stock')">Hold or release stock</button>
-        <button class="btn btn-primary" @click="$emit('go', 'plan')">Plan again</button>
+        <button v-if="mto" class="btn btn-primary" @click="$emit('go', 'plan')">Plan again</button>
+        <button v-else-if="!pg?.closed" class="btn" :class="pg?.state === 'at_level' ? 'btn-outline' : 'btn-primary'"
+                @click="$emit('go', 'plan')">Top up</button>
       </div>
     </template>
   </div>
@@ -111,6 +129,25 @@ const loading = ref(false)
 const error = ref('')
 const mto = computed(() => data.value?.project.order_type !== 'Made to stock')
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+// The stock programme's state, worked out by the planner on its saved targets
+const pg = computed(() => data.value?.programme || null)
+const pgTone = computed(() => (pg.value?.closed ? 'muted' : pg.value?.state === 'below' ? 'warn' : pg.value?.period_over ? 'muted' : 'ok'))
+const belowText = computed(() => (data.value?.rows || []).filter((r) => r.to_plan > 0)
+  .map((r) => `${r.item} ${fmt(r.to_plan)} ${r.uom || ''}`.trim()).join(', '))
+const closing = ref(false)
+async function closeProgramme() {
+  if (!window.confirm(`Close ${props.project}? It is marked Completed; its stock stays free for any order.`)) return
+  closing.value = true
+  error.value = ''
+  try {
+    await callMessage('pranera_planning.api.project_planning.close_programme', { project: props.project })
+    await load()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    closing.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -146,4 +183,9 @@ defineExpose({ load })
 .bad { color: #b91c1c; font-weight: 600; }
 .orange { color: #9a3412; font-weight: 600; }
 .actions { display: flex; gap: 12px; justify-content: flex-end; }
+.pg { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 12px; border-radius: 8px; border: 1px solid; font-size: 14px; }
+.pg.ok { background: #ecfdf3; border-color: #bbe5c8; color: #166534; }
+.pg.warn { background: #fff7ed; border-color: #f3c79a; color: #9a3412; }
+.pg.muted { background: var(--slate-50, #f8fafc); border-color: var(--slate-200); color: var(--slate-700); }
 </style>

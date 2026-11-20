@@ -164,6 +164,7 @@ def get_overview(project):
             stages.append({"stage": label, "orders": 0, "batches": 0, "input_qty": None, "in_process_qty": 0,
                            "produced_qty": 0, "loss_qty": None, "in_stores_qty": 0, "planned_qty": round(q, 3)})
 
+    programme = programme_status(p, plan, rows) if order_type == MTS and rows else None
     so = frappe.db.get_value("Sales Order", p.sales_order, ["customer", "delivery_date"], as_dict=True) if p.sales_order else None
     return {
         "project": {"name": p.name, "project_name": p.project_name, "project_type": p.project_type, "status": p.status,
@@ -176,4 +177,71 @@ def get_overview(project):
                    "not_planned": sum(flt(r.get("not_planned")) for r in rows)},
         "requests": requests,
         "stages": stages,
+        "programme": programme,
     }
+
+
+# ── stock programme: at level, below level, period over ──────────────────────
+
+def programme_status(p, plan, rows):
+    """Where a made-to-stock programme stands, worked out by the planner itself on its saved
+    lines (so it always agrees with what Plan again would buy):
+
+        state      "at_level" (nothing to buy) or "below" (something to buy)
+        to_plan    {item: what a plan would request now}; also set on each row as row["to_plan"]
+        period_over, period, closed
+    Never fails the Overview: if the plan can't be worked out, state is None."""
+    out = {"state": None, "to_plan": {}, "period_over": False, "period": p.get("stock_period"),
+           "closed": (p.get("status") or "") in ("Completed", "Cancelled")}
+    try:
+        out["period_over"] = period_over(p)
+    except Exception:
+        frappe.log_error(title="Stock programme period check failed")
+    lines = [{"item": ln["item"], "qty": flt(ln.get("qty")), "mode": ln.get("mode") or "top_up"}
+             for ln in plan.get("lines") or [] if ln.get("item") and flt(ln.get("qty")) > EPS]
+    if not lines:
+        return out
+    try:
+        prop = planner.propose({"order_type": MTS, "project": p.name, "lines": lines})[0]
+    except Exception:
+        frappe.log_error(title="Stock programme status failed")
+        return out
+    wanted = {ln["item"] for ln in lines}
+    to_plan = defaultdict(float)
+    for lv in prop.get("levels") or []:
+        if lv.get("item") in wanted:
+            to_plan[lv["item"]] += flt(lv.get("request"))
+    for r in rows:
+        r["to_plan"] = round(to_plan.get(r["item"], 0.0), 3)
+    out["to_plan"] = {k: round(v, 3) for k, v in to_plan.items()}
+    out["state"] = "below" if any(v > EPS for v in to_plan.values()) else "at_level"
+    return out
+
+
+def period_over(p):
+    """True once today falls in a later period than the one the programme was made for
+    (its creation date's period, by Re-order Settings › One project per)."""
+    from frappe.utils import getdate, today
+    from pranera_planning.reorder_math import period_of
+    if not p.get("stock_period"):
+        return False
+    s = frappe.get_cached_doc("Re-order Settings")
+    mode = s.get("stock_project_period") or "Quarter"
+    seasons = [(r.season, r.start_month) for r in (s.get("seasons") or []) if r.season and r.start_month]
+    created = frappe.db.get_value("Project", p.name, "creation")
+    return period_of(getdate(today()), mode, seasons) != period_of(getdate(created), mode, seasons)
+
+
+@frappe.whitelist(methods=["POST"])
+def close_programme(project):
+    """Mark a made-to-stock programme Completed (its period is over). Its stock stays where it
+    is and stays free for any order; new plans for its family go to the next period's project."""
+    frappe.has_permission("Project", "write", project, throw=True)
+    p = project_info(project)
+    if order_type_of(p) != MTS:
+        frappe.throw(_("Only a made-to-stock programme can be closed here."))
+    doc = frappe.get_doc("Project", project)
+    doc.status = "Completed"
+    doc.save()
+    doc.add_comment("Comment", _("Stock programme closed from the planning app by {0}.").format(frappe.session.user))
+    return {"status": doc.status}

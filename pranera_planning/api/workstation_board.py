@@ -43,7 +43,7 @@ def get_board(stage=None, start=None, days=28):
             cells.append({"date": str(d), "booked": round(q, 1), "capacity": round(cap, 1),
                           "pct": round(q / cap * 100) if cap > 0 else (None if q <= 0 else 999)})
         machines.append({**{k: v for k, v in ws.items() if k != "holidays"},
-                         "missing": [x for x, ok in (("Kg per hour", ws["kg_per_hour"] > 0), ("Working hours", ws["hours_set"])) if not ok],
+                         "missing": [x for x, ok in (("Output per hour", ws["kg_per_hour"] > 0), ("Working hours", ws["hours_set"])) if not ok],
                          "cells": cells, "bookings": [_row(b) for b in books if b.workstation == name]})
     wait = W.waiting(stage)
     _add_material(machines, wait)
@@ -63,7 +63,7 @@ def _row(b):
 def _candidates(a, wss):
     """For a waiting activity: each machine, whether it fits, and its earliest free slot."""
     out = []
-    want = {"stage": a.get("stage"), "dia": a.get("dia"), "gauge": a.get("gauge")}
+    want = {"stage": a.get("stage"), "dia": a.get("dia"), "gauge": a.get("gauge"), "uom": a.get("uom")}
     not_before = max(getdate(a["planned_start"]), getdate(today()))
     for name, ws in wss.items():
         why = ws_math.fits(want, ws)
@@ -99,7 +99,7 @@ def allocate(activity, workstation, start=None, override_reason=None):
     start = getdate(start or row.planned_start or today())
     got = ws_math.duration_for(ws, row.qty, start)
     if not got:
-        frappe.throw(_("{0} has no Kg per hour set, so its capacity is unknown: set it on the Workstation.").format(workstation))
+        frappe.throw(_("{0} has no Output per hour set, so its capacity is unknown: set it on the Workstation.").format(workstation))
     end, n_days = got
     item = {"stage": row.stage, **(W.item_fit([row.item_code]).get(row.item_code) or {})}
     problems = [_("{0} can't make {1}: {2}.").format(workstation, row.item_code, ", ".join(ws_math.fits(item, ws)))] \
@@ -108,8 +108,9 @@ def allocate(activity, workstation, start=None, override_reason=None):
     over = ws_math.over_days(ws, booked, row.qty, start, end)
     if over:
         d, tot, cap = over[0]
-        problems.append(_("{0} would be over capacity on {1} day(s), first {2}: {3} kg booked against {4} kg a day.")
-                        .format(workstation, len(over), frappe.utils.formatdate(d), tot, cap))
+        unit = ws.get("uom") or row.uom or "kg"
+        problems.append(_("{0} would be over capacity on {1} day(s), first {2}: {3} {5} booked against {4} {5} a day.")
+                        .format(workstation, len(over), frappe.utils.formatdate(d), tot, cap, unit))
     reason = (override_reason or "").strip()
     if problems:
         if not (_can_override() and reason):

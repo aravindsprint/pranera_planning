@@ -29,6 +29,13 @@ website_route_rules = [
 # Kill switch without a redeploy: set "project_stock_reservation_enforcement": 0 in
 # site_config.json.
 doc_events = {
+    # Before any submit or cancel: make sure ERPNext's Project uses the indexed two-query cost
+    # sum (overrides/project_cost.py). Cheap; needed because hooks.py itself is cached and not
+    # imported in every process.
+    "*": {
+        "before_submit": "pranera_planning.overrides.project_cost.ensure",
+        "before_cancel": "pranera_planning.overrides.project_cost.ensure",
+    },
     "Stock Entry": {
         "validate": "pranera_planning.reservation.validate_stock_entry",
         "on_submit": [
@@ -114,6 +121,10 @@ after_install = [
     "pranera_planning.patches.add_project_plan_flag.execute",
     "pranera_planning.patches.add_project_indexes.execute",
 ]
+
+# Also on every request and background job (stock reposting recomputes project costs too).
+before_request = ["pranera_planning.overrides.project_cost.apply"]
+before_job = ["pranera_planning.overrides.project_cost.apply"]
 
 # ERPNext 15.124.x sums a project's stock-entry additional costs with one OR query that can't
 # use an index (85–90 s per Stock Entry submit/cancel on erptest). Swap in the two-query form

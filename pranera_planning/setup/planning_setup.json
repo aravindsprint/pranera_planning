@@ -580,7 +580,7 @@
  },
  "workstations": {
   "FK01/6014/PL/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -588,7 +588,7 @@
    "production_capacity": 1
   },
   "FK02/6014/PL/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -596,7 +596,7 @@
    "production_capacity": 1
   },
   "FK03/6014/PL/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -604,7 +604,7 @@
    "production_capacity": 1
   },
   "FK04/6014/PL/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -612,7 +612,7 @@
    "production_capacity": 1
   },
   "FK05/6014/PL/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -620,7 +620,7 @@
    "production_capacity": 1
   },
   "FK06/6014/PL/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -628,7 +628,7 @@
    "production_capacity": 1
   },
   "FK07/6014/PL/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -636,7 +636,7 @@
    "production_capacity": 1
   },
   "FK08/6014/PL/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -644,7 +644,7 @@
    "production_capacity": 1
   },
   "FK09/8014/PL/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -652,7 +652,7 @@
    "production_capacity": 1
   },
   "FK10/8014/PL/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -660,7 +660,7 @@
    "production_capacity": 1
   },
   "FK11/4014/SJ/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -668,7 +668,7 @@
    "production_capacity": 1
   },
   "FK12/4014/SJ/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -676,7 +676,7 @@
    "production_capacity": 1
   },
   "FK13/6014/SJ/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -684,7 +684,7 @@
    "production_capacity": 1
   },
   "FK14/6014/SJ/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -692,7 +692,7 @@
    "production_capacity": 1
   },
   "FK15/6014/SJ/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -700,7 +700,7 @@
    "production_capacity": 1
   },
   "FK16/6014/SJ/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -708,7 +708,7 @@
    "production_capacity": 1
   },
   "FK17/6014/SJ/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -716,7 +716,7 @@
    "production_capacity": 1
   },
   "FK18/6014/SJ/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -740,7 +740,7 @@
    "production_capacity": 1
   },
   "FK21/6014/SJ/KH": {
-   "kg_per_hour": 40.0,
+   "kg_per_hour": 80.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",
@@ -748,7 +748,7 @@
    "production_capacity": 1
   },
   "FK22/6014/SJ/KH": {
-   "kg_per_hour": 20.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
    "planning_stage": "Knitting",

@@ -13,6 +13,11 @@ with no project under an entry of the project — and adds them. The two sets ca
 index (patch add_stock_project_indexes). This puts that version in place of the installed
 one. Once ERPNext is updated past the change, this override does nothing different and can
 be removed (see hooks.py).
+
+Applied from before_request, before_job and a before_submit / before_cancel doc event on every
+doctype: a module-level call in hooks.py alone is not enough, because Frappe caches hooks and
+does not import hooks.py in every process (the first version of this override was missing
+in the web workers and a bench console, and a manufacture entry still took 96 s).
 """
 import frappe
 from frappe.query_builder.functions import IfNull, Sum
@@ -37,7 +42,12 @@ def get_stock_entry_additional_costs(self) -> float:
     return on_line + on_entry
 
 
-def apply():
+def ensure(doc=None, method=None):
+    """doc_events hook (before_submit / before_cancel on every doctype)."""
+    apply()
+
+
+def apply(*args, **kwargs):
     """Put the two-query version on ERPNext's Project class (idempotent)."""
     try:
         from erpnext.projects.doctype.project.project import Project

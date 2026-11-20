@@ -96,6 +96,7 @@ class TestPropose(unittest.TestCase):
         self.assertFalse(can(lot("Pranera Textiles"), "SAL-ORD-1", mto, kinds, types))   # Internal: a reservation refuses it
         self.assertTrue(can(lot("25PUR001"), "SAL-ORD-1", mto, kinds, types))
         self.assertTrue(can(lot("PROJ-0002"), "SAL-ORD-1", mto, kinds, types))           # no type: allowed (warned)
+        self.assertFalse(can({**lot("25PUR001"), "unnumbered": True}, "SAL-ORD-1", mto, kinds))   # no roll no.: never borrowed
 
     def test_what_counts_as_own_stock(self):
         own, kinds = self.P.counts_as_own, {"25PUR001": "Made to stock", "PTIN1710": "Made to order"}

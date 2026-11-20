@@ -133,7 +133,7 @@ def can_borrow(lot, project, order_type, kinds, types=None):
     of a project typed something other than Purchase or Production (Internal, External…): a
     reservation refuses such a source, so offering it made Create fail.
     types = {project: Project Type}."""
-    if lot.get("produced"):
+    if lot.get("produced") or lot.get("unnumbered"):
         return False
     if lot.get("project") and kinds.get(lot["project"]) == MTO:
         return False
@@ -181,7 +181,8 @@ def reservable_summary(item_codes, project, order_type=MTO):
 def free_lots(items):
     """{item: [{"batch_no", "warehouse", "roll_no", "qty", "project", "produced"}]}, oldest batch
     first. Free = in stores minus what active reservations hold there. Roll items list free
-    numbered rolls only."""
+    numbered rolls, plus one lot per location for free stock with no roll numbers, flagged
+    "unnumbered": it counts as its project's own but is never borrowed or reserved."""
     items = list(items)
     batches = frappe.get_all("Batch", filters={"item": ["in", items], "batch_qty": [">", EPS], "disabled": 0},
                              fields=["name", "item"], order_by="creation asc") if items else []
@@ -213,6 +214,11 @@ def free_lots(items):
                 for roll, v in summ["rolls"].items():
                     if reservable(v["free"]):
                         out[item].append({**base, "roll_no": roll, "qty": v["free"]})
+                # Stock with no roll numbers yet (made or received without them): it can't be
+                # reserved or borrowed, but it is still the owning project's stock — its order
+                # is Ready and a re-plan must not make it again.
+                if reservable(summ["unnumbered"]["free"]):
+                    out[item].append({**base, "roll_no": "", "qty": summ["unnumbered"]["free"], "unnumbered": True})
             elif reservable(summ["free"]):
                 out[item].append({**base, "roll_no": "", "qty": summ["free"]})
     return out
@@ -482,7 +488,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         # reservations: own stock for an order (not what is already held), and borrowed stock
         held_here = min(flt(held.get(code)), r["own"])
         if rules["reserve_own"] and r["own"] - held_here > EPS:
-            picked, _miss = allocate_lots(own_lots[code], r["own"] - held_here)
+            picked, _miss = allocate_lots([l for l in own_lots[code] if not l.get("unnumbered")], r["own"] - held_here)
             reservations += [{**l, "item_code": code, "kind": "own"} for l in picked]
         if r["reserve"] > EPS:
             picked, _miss = allocate_lots(borrow_lots[code], r["reserve"])

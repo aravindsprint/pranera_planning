@@ -1,4 +1,4 @@
-"""Index `project` on Stock Entry, Stock Entry Detail and Stock Ledger Entry.
+r"""Index `project` on Stock Entry, Stock Entry Detail and Stock Ledger Entry.
 
 Every Stock Entry with a project runs ERPNext's Project.set_consumed_material_cost on submit
 and cancel, which sums Stock Entry Detail and Stock Ledger Entry rows by project. Without an

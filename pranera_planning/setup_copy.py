@@ -132,9 +132,11 @@ def _apply_settings(src, report, dry):
     skipped, changed = [], []
 
     wh = src.get("default_warehouse")
-    if wh and not frappe.db.exists("Warehouse", wh):
-        skipped.append(f"Warehouse for planned requests: {wh} (no such warehouse)")
-        src = {**src, "default_warehouse": s.get("default_warehouse")}
+    if wh:
+        found = _exact("Warehouse", wh)
+        if not found:
+            skipped.append(f"Warehouse for planned requests: {wh} (no such warehouse)")
+        src = {**src, "default_warehouse": found or s.get("default_warehouse")}
 
     for key, value in src.items():
         df = meta.get_field(key)
@@ -143,8 +145,13 @@ def _apply_settings(src, report, dry):
         if df.fieldtype == "Table":
             rows = value or []
             if key == "group_rules":
-                keep = [r for r in rows if r.get("item_group") and frappe.db.exists("Item Group", r["item_group"])]
-                skipped += [f"Group rule: item group {r.get('item_group')} (not on this site)" for r in rows if r not in keep]
+                keep = []
+                for r in rows:
+                    found = _exact("Item Group", r.get("item_group"))
+                    if found:
+                        keep.append({**r, "item_group": found})
+                    else:
+                        skipped.append(f"Group rule: item group {r.get('item_group')} (not on this site)")
                 rows = keep
             old = [{k: v for k, v in r.as_dict().items() if k not in STD} for r in s.get(key)]
             if _norm(old) != _norm(rows):
@@ -196,6 +203,15 @@ def _apply_workstations(wss, report, dry):
                 frappe.db.set_value("Workstation", name, diff)
     report["changed"]["workstations"] = changed
     report["skipped"]["workstations_not_on_this_site"] = missing
+
+
+def _exact(doctype, name):
+    """The record's name as this site stores it, or None. MariaDB matches names ignoring case and
+    trailing spaces, so a name typed or copied slightly differently still finds the record; the
+    stored spelling is what has to be written back, or Python-side comparisons disagree."""
+    if not name:
+        return None
+    return frappe.db.get_value(doctype, name, "name")
 
 
 def _norm(x):

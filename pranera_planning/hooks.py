@@ -88,6 +88,11 @@ fixtures = [
 scheduler_events = {
     "daily": [
         "pranera_planning.reservation.refresh_all_fulfilment",
+    ],
+    # Recalculating every item takes longer than a plain daily job's time limit: on erptest it
+    # was cut off every night (Scheduled Job Log: "Start", never "Complete"), so nothing was
+    # ever saved. daily_long runs it on the long queue with the long timeout.
+    "daily_long": [
         "pranera_planning.reorder.recalculate_all",
     ],
 }

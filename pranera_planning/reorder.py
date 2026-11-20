@@ -351,7 +351,22 @@ def _top_group(group):
     return _TOP[group]
 
 
+def _fit(values):
+    """Cut text to the field's length: Item names here run past Data's 140 characters and
+    insert() would refuse the whole row (set_value would silently truncate anyway)."""
+    meta = frappe.get_meta("Item Re-order Level")
+    out = dict(values)
+    for key, value in values.items():
+        df = meta.get_field(key)
+        if df and isinstance(value, str) and df.fieldtype in ("Data", "Link", "Select"):
+            limit = int(df.length or 140)
+            if len(value) > limit:
+                out[key] = value[:limit - 1].rstrip() + "…"
+    return out
+
+
 def _save(code, values):
+    values = _fit(values)
     if frappe.db.exists("Item Re-order Level", code):
         frappe.db.set_value("Item Re-order Level", code, values, update_modified=False)
     else:

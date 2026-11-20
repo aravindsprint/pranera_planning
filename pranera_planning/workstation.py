@@ -71,14 +71,24 @@ def workstations(stage=None, names=None, frm=None, to=None):
             f["holiday_date"] = ["between", [str(getdate(frm)), str(getdate(to))]]
         for h in frappe.get_all("Holiday", filters=f, fields=["parent", "holiday_date"]):
             hol.setdefault(h.parent, set()).add(getdate(h.holiday_date))
+    rates = {}
+    if _has("Workstation Operation Output", "operation"):
+        for o in frappe.get_all("Workstation Operation Output", filters={"parent": ["in", [r.name for r in rows]],
+                                "parenttype": "Workstation"}, fields=["parent", "operation", "output_per_hour"]):
+            if o.operation and flt(o.output_per_hour) > 0:
+                rates.setdefault(o.parent, {})[o.operation.strip().lower()] = flt(o.output_per_hour)
     out = {}
     for r in rows:
         hrs = _hours(hours.get(r.name, []))
+        r_rates = rates.get(r.name, {})
+        base = flt(r.get("kg_per_hour")) or (max(r_rates.values()) if r_rates else 0)
         out[r.name] = {"name": r.name, "label": r.get("workstation_name") or r.name, "stage": r.get("planning_stage") or "",
-                       "kg_per_hour": flt(r.get("kg_per_hour")), "uom": r.get("planning_uom") or "", "hours": hrs or DEFAULT_HOURS, "hours_set": bool(hrs),
+                       "kg_per_hour": base, "rates": r_rates, "uom": r.get("planning_uom") or "", "hours": hrs or DEFAULT_HOURS, "hours_set": bool(hrs),
                        "parallel": int(r.get("production_capacity") or 1), "dia": flt(r.get("machine_dia")) or None,
                        "gauge": flt(r.get("machine_gauge")) or None, "holidays": hol.get(r.get("holiday_list"), set())}
         out[r.name]["per_day"] = ws_math.capacity_on({**out[r.name], "holidays": set()}, getdate())
+        day = out[r.name]["per_day"] / base if base else 0                # hours × parallel
+        out[r.name]["per_day_by_operation"] = {op: round(v * day, 1) for op, v in r_rates.items()}
     return out
 
 
@@ -90,6 +100,29 @@ def item_fit(items):
     return {r.name: {"dia": flt(r.get("knit_dia")) or None, "gauge": flt(r.get("knit_gauge")) or None,
                      "uom": r.get("stock_uom") or ""}
             for r in frappe.get_all("Item", filters={"name": ["in", list(items)]}, fields=["name", "stock_uom"] + f)}
+
+
+def item_operations(items):
+    """{item: [operation (lower case)]} from each item's default, active BOM."""
+    items = [i for i in set(items or ()) if i]
+    if not items:
+        return {}
+    out = {}
+    for item, op in frappe.db.sql("""SELECT b.item, bo.operation FROM `tabBOM` b
+            JOIN `tabBOM Operation` bo ON bo.parent = b.name AND bo.parenttype = 'BOM'
+            WHERE b.item IN %(items)s AND b.is_default = 1 AND b.is_active = 1 AND b.docstatus = 1
+            ORDER BY bo.idx""", {"items": tuple(items)}):
+        if op:
+            out.setdefault(item, []).append(op.strip().lower())
+    return out
+
+
+def with_operations(rows):
+    """Add "ops" (the item's default-BOM operations) to activity rows; returns rows."""
+    ops = item_operations([r.get("item_code") for r in rows])
+    for r in rows:
+        r["ops"] = ops.get(r.get("item_code"), [])
+    return rows
 
 
 def _activities(filters, extra=""):
@@ -110,8 +143,8 @@ def bookings(frm, to, names=None, exclude=None):
         extra += " AND a.workstation IN %(names)s"
     if exclude:
         extra += " AND a.name != %(exclude)s"
-    return _activities({"frm": str(getdate(frm)), "to": str(getdate(to)), "names": tuple(names or ()) or ("",),
-                        "exclude": exclude or ""}, extra)
+    return with_operations(_activities({"frm": str(getdate(frm)), "to": str(getdate(to)),
+                                        "names": tuple(names or ()) or ("",), "exclude": exclude or ""}, extra))
 
 
 def waiting(stage=None):
@@ -130,10 +163,10 @@ def waiting(stage=None):
             continue
         out.append({**a, "done_qty": flt(got.get("done_qty")), "planned_start": str(a.planned_start),
                     "planned_end": str(a.planned_end)})
-    return out
+    return with_operations(out)
 
 
 def booked_by_day(ws_name, ws, frm, to, exclude=None):
-    """{date: kg} already booked on one workstation."""
+    """{date: qty} already booked on one workstation, in its base output (see ws_math.equivalent)."""
     load = ws_math.load(bookings(frm, to, [ws_name], exclude), {ws_name: ws}, frm, to)
     return {d: q for (w, d), q in load.items()}

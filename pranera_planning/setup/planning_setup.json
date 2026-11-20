@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-20 13:10:00",
+ "exported_on": "2026-11-20 13:40:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -580,9 +580,19 @@
  },
  "workstations": {
   "FK01/6014/PL/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -591,6 +601,16 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -599,22 +619,52 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK04/6014/PL/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK05/6014/PL/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -623,14 +673,34 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK07/6014/PL/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -639,6 +709,16 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -647,22 +727,52 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK10/8014/PL/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK11/4014/SJ/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -671,6 +781,16 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -679,6 +799,16 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -687,22 +817,52 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK15/6014/SJ/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK16/6014/SJ/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -711,14 +871,34 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK18/6014/SJ/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -727,6 +907,16 @@
    "kg_per_hour": 20.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 20.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 40.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -735,14 +925,34 @@
    "kg_per_hour": 20.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 20.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 40.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
   },
   "FK21/6014/SJ/KH": {
-   "kg_per_hour": 80.0,
+   "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -751,6 +961,16 @@
    "kg_per_hour": 40.0,
    "machine_dia": 0,
    "machine_gauge": 14,
+   "operation_outputs": [
+    {
+     "operation": "COLLAR KNITTING",
+     "output_per_hour": 40.0
+    },
+    {
+     "operation": "CUFF KNITTING",
+     "output_per_hour": 80.0
+    }
+   ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
    "production_capacity": 1
@@ -759,6 +979,7 @@
    "kg_per_hour": 27.4,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -767,6 +988,7 @@
    "kg_per_hour": 109.5,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -775,6 +997,7 @@
    "kg_per_hour": 91.2,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -783,6 +1006,7 @@
    "kg_per_hour": 68.4,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -791,6 +1015,7 @@
    "kg_per_hour": 82.1,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -799,6 +1024,7 @@
    "kg_per_hour": 10.5,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -807,6 +1033,7 @@
    "kg_per_hour": 2.2,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -815,6 +1042,7 @@
    "kg_per_hour": 36.0,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -823,6 +1051,7 @@
    "kg_per_hour": 4.6,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -831,6 +1060,7 @@
    "kg_per_hour": 112.5,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -839,6 +1069,7 @@
    "kg_per_hour": 91.2,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -847,6 +1078,7 @@
    "kg_per_hour": 23.1,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -855,6 +1087,7 @@
    "kg_per_hour": 63.9,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -863,6 +1096,7 @@
    "kg_per_hour": 134.4,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -871,6 +1105,7 @@
    "kg_per_hour": 2.2,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -879,6 +1114,7 @@
    "kg_per_hour": 4.6,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -887,6 +1123,7 @@
    "kg_per_hour": 82.1,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -895,6 +1132,7 @@
    "kg_per_hour": 86.3,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -903,6 +1141,7 @@
    "kg_per_hour": 24.8,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -911,6 +1150,7 @@
    "kg_per_hour": 4.6,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -919,6 +1159,7 @@
    "kg_per_hour": 80.6,
    "machine_dia": 0,
    "machine_gauge": 0,
+   "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -927,6 +1168,7 @@
    "kg_per_hour": 6.3,
    "machine_dia": 34,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -935,6 +1177,7 @@
    "kg_per_hour": 6.9,
    "machine_dia": 34,
    "machine_gauge": 32,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -943,6 +1186,7 @@
    "kg_per_hour": 8.6,
    "machine_dia": 30,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -951,6 +1195,7 @@
    "kg_per_hour": 8.1,
    "machine_dia": 30,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -959,6 +1204,7 @@
    "kg_per_hour": 9.8,
    "machine_dia": 28,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -967,6 +1213,7 @@
    "kg_per_hour": 11.6,
    "machine_dia": 26,
    "machine_gauge": 24,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -975,6 +1222,7 @@
    "kg_per_hour": 8.0,
    "machine_dia": 26,
    "machine_gauge": 24,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -983,6 +1231,7 @@
    "kg_per_hour": 16.5,
    "machine_dia": 28,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -991,6 +1240,7 @@
    "kg_per_hour": 16.5,
    "machine_dia": 28,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -999,6 +1249,7 @@
    "kg_per_hour": 16.5,
    "machine_dia": 28,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1007,6 +1258,7 @@
    "kg_per_hour": 9.7,
    "machine_dia": 28,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1015,6 +1267,7 @@
    "kg_per_hour": 11.6,
    "machine_dia": 30,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1023,6 +1276,7 @@
    "kg_per_hour": 9.0,
    "machine_dia": 32,
    "machine_gauge": 24,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1031,6 +1285,7 @@
    "kg_per_hour": 11.4,
    "machine_dia": 34,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1039,6 +1294,7 @@
    "kg_per_hour": 11.9,
    "machine_dia": 34,
    "machine_gauge": 32,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1047,6 +1303,7 @@
    "kg_per_hour": 13.9,
    "machine_dia": 30,
    "machine_gauge": 26,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1055,6 +1312,7 @@
    "kg_per_hour": 14.1,
    "machine_dia": 30,
    "machine_gauge": 26,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1063,6 +1321,7 @@
    "kg_per_hour": 11.6,
    "machine_dia": 34,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1
@@ -1071,6 +1330,7 @@
    "kg_per_hour": 20.2,
    "machine_dia": 34,
    "machine_gauge": 28,
+   "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
    "production_capacity": 1

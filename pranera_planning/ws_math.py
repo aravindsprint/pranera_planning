@@ -2,8 +2,12 @@
 No frappe imports, so it can be unit-tested anywhere.
 
 Capacity of a workstation on a day (all from the Workstation doctype):
-    kg per hour × working hours that day × production capacity (jobs in parallel)
+    output per hour × working hours that day × production capacity (jobs in parallel)
     0 on a holiday of its Holiday List.
+Some machines run at a different speed per operation (a flat knitting machine: 40 collars or
+80 cuffs an hour): ws["rates"] = {operation (lower case): output per hour}. A booking for an
+item made with such an operation is counted at the machine's base speed: qty × base ÷ rate,
+so 960 collars at 40/h fill a day of an 80/h machine just as 1,920 cuffs do.
 A booking (a T&A activity on a workstation) spreads its quantity evenly over the working days
 from its planned start up to, not including, its planned end. A day is over-booked when the
 bookings on it add up to more than the capacity.
@@ -33,6 +37,23 @@ def days(start, end):
     return [s + timedelta(days=i) for i in range((e - s).days)]
 
 
+def rate_for(ws, ops=None):
+    """Output per hour of the workstation for an item made with operations `ops`."""
+    rates = ws.get("rates") or {}
+    for op in ops or ():
+        r = float(rates.get(str(op).strip().lower()) or 0)
+        if r > EPS:
+            return r
+    return float(ws.get("kg_per_hour") or 0)
+
+
+def equivalent(ws, qty, ops=None):
+    """qty of an item made with `ops`, in the machine's base output (its Output per hour)."""
+    base, rate = float(ws.get("kg_per_hour") or 0), rate_for(ws, ops)
+    q = float(qty or 0)
+    return q * base / rate if base > EPS and rate > EPS else q
+
+
 def capacity_on(ws, day):
     """kg the workstation can do on `day`. ws = {"kg_per_hour", "hours", "parallel", "holidays"}."""
     if _d(day) in (ws.get("holidays") or set()):
@@ -51,7 +72,7 @@ def load(bookings, ws_by_name, frm, to):
         work = [d for d in span if capacity_on(ws, d) > EPS] or span[:1]
         if not work:
             continue
-        each = float(b.get("qty") or 0) / len(work)
+        each = equivalent(ws, b.get("qty"), b.get("ops")) / len(work)
         for d in work:
             if frm <= d < to:
                 out[(b["workstation"], d)] = out.get((b["workstation"], d), 0.0) + each

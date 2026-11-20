@@ -218,7 +218,9 @@ def non_pool_warehouses():
                         deliver into it, or one used as WIP whose name says WIP / Work In
                         Progress; plus Manufacturing Settings' default WIP warehouse
       At subcontractor  a Subcontracting Order's (or subcontracted Purchase Order's)
-                        supplier warehouse
+                        supplier warehouse — unless Work Orders draw from or deliver into it,
+                        or Sales Orders deliver from it, more often (a store named there by
+                        mistake)
       Excluded          listed in site config project_stock_reservation_excluded_warehouses
     Site config project_stock_reservation_pool_warehouses forces warehouses back in.
     The name prefixes in excluded_prefixes() apply on top of this.
@@ -264,11 +266,25 @@ def non_pool_warehouses():
     default_wip = frappe.db.get_single_value("Manufacturing Settings", "default_wip_warehouse")
     if default_wip:
         wip.add(default_wip)
-    sql = lambda q: {w for w in frappe.db.sql_list(q) if w}
-    subcontractor = (
-        sql("SELECT DISTINCT supplier_warehouse FROM `tabSubcontracting Order` WHERE docstatus = 1")
-        | sql("SELECT DISTINCT supplier_warehouse FROM `tabPurchase Order` WHERE docstatus = 1 AND is_subcontracted = 1")
-    )
+    as_supplier = defaultdict(int)
+    for q in (
+        "SELECT supplier_warehouse, COUNT(*) FROM `tabSubcontracting Order` WHERE docstatus = 1 GROUP BY supplier_warehouse",
+        """SELECT supplier_warehouse, COUNT(*) FROM `tabPurchase Order`
+           WHERE docstatus = 1 AND is_subcontracted = 1 GROUP BY supplier_warehouse""",
+    ):
+        for w, n in counts(q).items():
+            as_supplier[w] += n
+    # A store we deliver from or finish into is not a job worker's, even if an order or two named
+    # it as the supplier warehouse by mistake: on erptest one 2024 order (SCOT24/2290) named
+    # "JV - READY FOR BILLING", which made every finished batch there count as at a subcontractor
+    # and no order ever showed Ready. Same rule as WIP: it is the job worker's only if that is
+    # how it is mostly used.
+    as_store = defaultdict(int, as_feed)
+    for w, n in counts("""SELECT soi.warehouse, COUNT(*) FROM `tabSales Order Item` soi
+                          JOIN `tabSales Order` so ON so.name = soi.parent AND so.docstatus = 1
+                          GROUP BY soi.warehouse""").items():
+        as_store[w] += n
+    subcontractor = {w for w, n in as_supplier.items() if n > as_store.get(w, 0)}
 
     found = {w: "In WIP" for w in wip}
     found.update({w: "At subcontractor" for w in subcontractor})

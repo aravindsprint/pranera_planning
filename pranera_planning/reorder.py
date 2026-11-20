@@ -297,7 +297,9 @@ def calculate(items, cfg, sales=None, used=None):
         qty = (sales.get(code, 0) if "Sales" in basis else 0) + (used.get(code, 0) if "Consumption" in basis else 0)
         lead = item_lead[code]
         arriving_later = min(flt(later.get(code)), flt(ordered.get(code)))
-        safety_days = flt(rule.safety_days) if rule and rule.safety_days is not None and rule.safety_days != "" else cfg["safety_days"]
+        # 0 / blank in a group rule means "use the default", as for cover days and round-up:
+        # Frappe stores an empty Float as 0, so a blank can't be told apart from a typed 0
+        safety_days = flt(rule.safety_days) if rule and rule.safety_days else cfg["safety_days"]
         cover_days = flt(rule.cover_days) if rule and rule.cover_days else cfg["cover_days"]
         round_to = flt(rule.round_to) if rule and rule.round_to else cfg["round_to"]
         n = reorder_numbers(qty, cfg["history_days"], lead, safety_days, cover_days,

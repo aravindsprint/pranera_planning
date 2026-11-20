@@ -40,7 +40,7 @@ class TestReorderEngine(unittest.TestCase):
                 sys.modules[n] = m
         WORLD.clear()
 
-    def run_engine(self, include_bought=False):
+    def run_engine(self, include_bought=False, finishing_safety=7):
         E = self.E
         WORLD["Item"] = lambda flt: [
             _dict(name=c, item_name=c, item_group=g, stock_uom="Kgs", commercial_name=cn,
@@ -63,7 +63,7 @@ class TestReorderEngine(unittest.TestCase):
             return _dict(safety_days=safety, cover_days=cover, round_to=25, demand_basis="Sales + Consumption", bought_lead_days=0)
         cfg = {"history_days": 90, "near_margin": 10, "safety_days": 5, "cover_days": 30, "round_to": 1, "include_bought": include_bought,
                "stage_days": {"knitting": 5, "dyeing": 7, "finishing": 3},
-               "rules": [(2, 3, rule(7, 30)), (4, 7, rule(3, 15)), (10, 11, rule(5, 20))]}
+               "rules": [(2, 3, rule(finishing_safety, 30)), (4, 7, rule(3, 15)), (10, 11, rule(5, 20))]}
         sales = {"SKF11355/WHITE/68OW": 2700, "GKF11355/GREIGE/28OW": 270}
         used = {"DKF11355/WHITE/68OW": 2790, "GKF11355/GREIGE/28OW": 2700, "YRFPP090/GREIGE": 4050, "YRSPE011/GREIGE": 450}
         count = E.calculate(list(ITEMS), cfg, sales=sales, used=used)
@@ -90,6 +90,12 @@ class TestReorderEngine(unittest.TestCase):
         self.assertEqual((ypp["obtained"], ypp["lead_days"], ypp["reorder_level"], ypp["status"]), ("Bought", 10, 675, "OK"))
         self.assertEqual(ypp["family"], "YARN")                       # no Commercial Name: the group is the family
         self.assertEqual(saved["YRSPE011/GREIGE"]["family"], "YARN")  # "-" counts as none
+
+    def test_a_rule_with_no_safety_days_uses_the_default(self):
+        # Frappe stores a blank Float as 0: a rule left empty must not mean "no safety stock".
+        _c, saved = self.run_engine(finishing_safety=0)
+        skf = saved["SKF11355/WHITE/68OW"]
+        self.assertEqual((skf["safety_days"], skf["reorder_level"]), (5, 600))       # 30/day × (15 lead + 5 default)
 
     def test_purchase_orders_due_after_the_lead_time_arrive_later(self):
         # YRSPE011 (21 lead days from its Item) has 100 on order: due in 45 days, it doesn't count.

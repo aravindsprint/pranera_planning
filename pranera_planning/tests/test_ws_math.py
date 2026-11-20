@@ -33,6 +33,32 @@ class TestLoad(unittest.TestCase):
         self.assertEqual(W.over_days(KM, booked, 200, "2026-11-06", "2026-11-07"), [])
 
 
+# a double-carriage flat machine: 40 collars or 80 cuffs an hour, 24 h; base = cuff speed
+FLAT = {"kg_per_hour": 80, "rates": {"collar knitting": 40, "cuff knitting": 80}, "hours": 24, "parallel": 1,
+        "holidays": set(), "stage": "Knitting", "uom": "Pcs"}
+
+
+class TestOperationSpeed(unittest.TestCase):
+    def test_rate_by_operation(self):
+        self.assertEqual(W.rate_for(FLAT, ["collar knitting"]), 40)
+        self.assertEqual(W.rate_for(FLAT, ["CUFF KNITTING "]), 80)
+        self.assertEqual(W.rate_for(FLAT, ["knitting"]), 80)                  # no match: the machine's base
+        self.assertEqual(W.rate_for(KM, ["collar knitting"]), 25)             # machine without rates
+
+    def test_collars_take_twice_the_time_of_cuffs(self):
+        self.assertEqual(W.equivalent(FLAT, 960, ["collar knitting"]), 1920)  # a full day
+        self.assertEqual(W.equivalent(FLAT, 960, ["cuff knitting"]), 960)     # half a day
+        self.assertEqual(W.duration_for(FLAT, W.equivalent(FLAT, 960, ["collar knitting"]), "2026-11-06")[1], 1)
+        self.assertEqual(W.duration_for(FLAT, W.equivalent(FLAT, 1920, ["collar knitting"]), "2026-11-06")[1], 2)
+
+    def test_mixed_day_load(self):
+        b = [{"workstation": "FK01", "qty": 480, "ops": ["collar knitting"], "planned_start": "2026-11-06", "planned_end": "2026-11-07"},
+             {"workstation": "FK01", "qty": 960, "ops": ["cuff knitting"], "planned_start": "2026-11-06", "planned_end": "2026-11-07"}]
+        load = W.load(b, {"FK01": FLAT}, "2026-11-01", "2026-11-30")
+        self.assertEqual(load[("FK01", date(2026, 11, 6))], 1920.0)          # half a day each: exactly full
+        self.assertEqual(W.over_days(FLAT, {date(2026, 11, 6): 1920.0}, 1, "2026-11-06", "2026-11-07")[0][2], 1920.0)
+
+
 class TestSlot(unittest.TestCase):
     def test_earliest_slot_waits_for_room(self):
         booked = {date(2026, 11, 6): 500.0, date(2026, 11, 7): 500.0}       # full for two days

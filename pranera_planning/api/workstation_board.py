@@ -70,7 +70,7 @@ def _candidates(a, wss):
         slot = None
         if not why and ws["kg_per_hour"] > 0:
             booked = W.booked_by_day(name, ws, not_before, not_before + timedelta(days=150))
-            got = ws_math.earliest_slot(ws, booked, a["qty"], not_before)
+            got = ws_math.earliest_slot(ws, booked, ws_math.equivalent(ws, a["qty"], a.get("ops")), not_before)
             slot = {"start": str(got[0]), "end": str(got[1])} if got else None
         out.append({"workstation": name, "fits": not why, "why": why, "slot": slot,
                     "late": bool(slot and getdate(slot["end"]) > getdate(a["planned_end"]))})
@@ -97,7 +97,9 @@ def allocate(activity, workstation, start=None, override_reason=None):
     if not ws:
         frappe.throw(_("Workstation {0} not found or disabled.").format(workstation))
     start = getdate(start or row.planned_start or today())
-    got = ws_math.duration_for(ws, row.qty, start)
+    ops = W.item_operations([row.item_code]).get(row.item_code, [])
+    qty = ws_math.equivalent(ws, row.qty, ops)              # in the machine's base output
+    got = ws_math.duration_for(ws, qty, start)
     if not got:
         frappe.throw(_("{0} has no Output per hour set, so its capacity is unknown: set it on the Workstation.").format(workstation))
     end, n_days = got
@@ -105,12 +107,16 @@ def allocate(activity, workstation, start=None, override_reason=None):
     problems = [_("{0} can't make {1}: {2}.").format(workstation, row.item_code, ", ".join(ws_math.fits(item, ws)))] \
         if ws_math.fits(item, ws) else []
     booked = W.booked_by_day(workstation, ws, start, end + timedelta(days=1), exclude=row.name)
-    over = ws_math.over_days(ws, booked, row.qty, start, end)
+    over = ws_math.over_days(ws, booked, qty, start, end)
     if over:
         d, tot, cap = over[0]
-        unit = ws.get("uom") or row.uom or "kg"
-        problems.append(_("{0} would be over capacity on {1} day(s), first {2}: {3} {5} booked against {4} {5} a day.")
-                        .format(workstation, len(over), frappe.utils.formatdate(d), tot, cap, unit))
+        if ws.get("rates"):                                # mixed operations: say it as a share of the day
+            problems.append(_("{0} would be over capacity on {1} day(s), first {2}: {3}% of the day booked.")
+                            .format(workstation, len(over), frappe.utils.formatdate(d), round(tot / cap * 100) if cap else 999))
+        else:
+            unit = ws.get("uom") or row.uom or "kg"
+            problems.append(_("{0} would be over capacity on {1} day(s), first {2}: {3} {5} booked against {4} {5} a day.")
+                            .format(workstation, len(over), frappe.utils.formatdate(d), tot, cap, unit))
     reason = (override_reason or "").strip()
     if problems:
         if not (_can_override() and reason):

@@ -1,0 +1,42 @@
+{
+ "actions": [],
+ "creation": "2026-11-20 13:30:00.000000",
+ "modified": "2026-11-20 13:30:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Planning",
+ "links": [],
+ "states": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "name": "Workstation Operation Output",
+ "istable": 1,
+ "editable_grid": 1,
+ "permissions": [],
+ "fields": [
+  {
+   "fieldname": "operation",
+   "label": "Operation",
+   "fieldtype": "Link",
+   "options": "Operation",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "An operation of the item's default BOM, e.g. COLLAR KNITTING."
+  },
+  {
+   "fieldname": "output_per_hour",
+   "label": "Output per hour",
+   "fieldtype": "Float",
+   "reqd": 1,
+   "non_negative": 1,
+   "in_list_view": 1,
+   "description": "In the workstation's Planning UOM, for items made with this operation."
+  }
+ ],
+ "field_order": [
+  "operation",
+  "output_per_hour"
+ ]
+}

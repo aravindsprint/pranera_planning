@@ -20,3 +20,4 @@ pranera_planning.patches.add_ta_check_fields
 pranera_planning.patches.add_project_plan_flag
 pranera_planning.patches.add_project_indexes
 pranera_planning.patches.add_workstation_uom_field
+pranera_planning.patches.add_workstation_operation_output

@@ -5,8 +5,9 @@ What it carries
                          and entered), seasons, lead-day sources, warehouse for planned requests;
                          not the last-run stamps
   Supplier               Usual lead days
-  Workstation            Planning stage, Output per hour, Planning UOM, dia, gauge and
-                         Production Capacity, for machines that have a planning stage
+  Workstation            Planning stage, Output per hour, Planning UOM, dia, gauge,
+                         Production Capacity and the Output per operation table, for machines
+                         that have a planning stage
   site_config.json       every project_stock_reservation_* key (stage prefixes and the rest)
 
 Usage, from frappe-bench:
@@ -83,10 +84,27 @@ def _settings_dict():
     return out
 
 
+OPS = "Workstation Operation Output"
+
+
+def _has_ops():
+    return frappe.db.table_exists(OPS)
+
+
+def _ops_of(names):
+    out = {}
+    if names and _has_ops():
+        for o in frappe.get_all(OPS, filters={"parent": ["in", list(names)], "parenttype": "Workstation"},
+                                fields=["parent", "operation", "output_per_hour"], order_by="parent, idx"):
+            out.setdefault(o.parent, []).append({"operation": o.operation, "output_per_hour": o.output_per_hour})
+    return out
+
+
 def _workstations():
     have = [f for f in WS_FIELDS if frappe.db.has_column("Workstation", f)]
-    return {w.name: {f: w.get(f) for f in have} for w in frappe.get_all(
-        "Workstation", filters={"planning_stage": ["is", "set"]}, fields=["name"] + have, order_by="name")}
+    rows = frappe.get_all("Workstation", filters={"planning_stage": ["is", "set"]}, fields=["name"] + have, order_by="name")
+    ops = _ops_of([w.name for w in rows])
+    return {w.name: {**{f: w.get(f) for f in have}, "operation_outputs": ops.get(w.name, [])} for w in rows}
 
 
 # ── apply ─────────────────────────────────────────────────────────────────────
@@ -187,22 +205,36 @@ def _apply_suppliers(days, report, dry):
 
 def _apply_workstations(wss, report, dry):
     have = {f for f in WS_FIELDS if frappe.db.has_column("Workstation", f)}
-    changed, missing = [], []
+    changed, missing, no_ops = [], [], set()
+    current_ops = _ops_of(list(wss))
     for name, values in wss.items():
         if not frappe.db.exists("Workstation", name):
             missing.append(name)
             continue
+        ops = [o for o in (values.get("operation_outputs") or [])]
         values = {k: v for k, v in values.items() if k in have}
+        if _has_ops():
+            keep = [o for o in ops if frappe.db.exists("Operation", o.get("operation"))]
+            no_ops |= {o.get("operation") for o in ops if o not in keep}
+            if _norm(keep) != _norm(current_ops.get(name, [])):
+                changed.append(f"{name} (output per operation)")
+                if not dry:
+                    frappe.db.delete(OPS, {"parent": name, "parenttype": "Workstation"})
+                    for i, o in enumerate(keep, 1):
+                        frappe.get_doc({"doctype": OPS, "parent": name, "parenttype": "Workstation",
+                                        "parentfield": "operation_outputs", "idx": i,
+                                        "operation": o["operation"], "output_per_hour": o["output_per_hour"]}).db_insert()
         if values.get("planning_uom") and not frappe.db.exists("UOM", values["planning_uom"]):
             values.pop("planning_uom")
         cur = frappe.db.get_value("Workstation", name, list(values), as_dict=True) or {}
         diff = {k: v for k, v in values.items() if _norm(cur.get(k)) != _norm(v)}
         if diff:
-            changed.append(name)
+            changed.append(f"{name} ({', '.join(diff)})")
             if not dry:
                 frappe.db.set_value("Workstation", name, diff)
     report["changed"]["workstations"] = changed
     report["skipped"]["workstations_not_on_this_site"] = missing
+    report["skipped"]["operations_not_on_this_site"] = sorted(x for x in no_ops if x)
 
 
 def _exact(doctype, name):

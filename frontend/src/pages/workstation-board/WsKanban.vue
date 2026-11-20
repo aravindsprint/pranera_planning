@@ -18,7 +18,7 @@
              @dragover.prevent="overCol = m.name" @dragleave="overCol = null" @drop.prevent="drop(m.name)">
       <header>
         <div class="name">{{ m.label }}</div>
-        <div class="sub">{{ f(m.per_day) }} {{ m.uom || 'kg' }}/day<template v-if="m.dia"> · {{ m.dia }}″ {{ m.gauge }}G</template> · {{ load(m) }}% booked</div>
+        <div class="sub">{{ capText(m) }}<template v-if="m.dia"> · {{ m.dia }}″ {{ m.gauge }}G</template> · {{ load(m) }}% booked</div>
         <div class="bar"><span :style="{ width: `${Math.min(100, load(m))}%` }" :class="{ hot: load(m) > 100 }"></span></div>
       </header>
       <article v-for="b in queue(m)" :key="b.activity" class="card-k" :class="`s-${slug(b.status)}`" draggable="true"
@@ -36,6 +36,7 @@
 </template>
 
 <script setup>
+import { capText } from './wsText'
 import { ref } from 'vue'
 import MaterialBadge from '@/components/MaterialBadge.vue'
 import { APP_BASE } from '@/config/app'

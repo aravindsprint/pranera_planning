@@ -63,7 +63,10 @@ class TestPropose(unittest.TestCase):
         P.last_service = lambda items: {SKF: "DRYER"}                      # this fabric last went to the dryer
         P.request_warehouse = lambda item, comp, settings, **kw: ("Stores - PSS", "item default")
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
-            [("26PTIN1710", "Made to order"), ("25PUR001", "Made to stock"), ("26STK-OLD", "Made to stock")] if doctype == "Project" else [])
+            ([("26PTIN1710", "Production"), ("25PUR001", "Purchase"), ("26STK-OLD", "Purchase")]
+             if "project_type" in (fields or []) else
+             [("26PTIN1710", "Made to order"), ("25PUR001", "Made to stock"), ("26STK-OLD", "Made to stock")])
+            if doctype == "Project" else [])
 
     def run_mto(self, picks=None):
         P = self.P
@@ -89,6 +92,10 @@ class TestPropose(unittest.TestCase):
         self.assertFalse(can(lot("PTIN1710"), "SAL-ORD-1", mto, kinds))      # another order's
         self.assertFalse(can(lot("25PUR001", produced=True), "SAL-ORD-1", mto, kinds))
         self.assertFalse(can(lot(None), "26STK-YARN-Q4-01", mts, kinds))     # stock plan: it's own, not borrowed
+        types = {"Pranera Textiles": "Internal", "25PUR001": "Purchase"}
+        self.assertFalse(can(lot("Pranera Textiles"), "SAL-ORD-1", mto, kinds, types))   # Internal: a reservation refuses it
+        self.assertTrue(can(lot("25PUR001"), "SAL-ORD-1", mto, kinds, types))
+        self.assertTrue(can(lot("PROJ-0002"), "SAL-ORD-1", mto, kinds, types))           # no type: allowed (warned)
 
     def test_what_counts_as_own_stock(self):
         own, kinds = self.P.counts_as_own, {"25PUR001": "Made to stock", "PTIN1710": "Made to order"}

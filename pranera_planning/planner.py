@@ -123,13 +123,22 @@ def counts_as_own(lot_project, project, order_type, kinds):
     return (bool(project) and same_project(lot_project, project)) or kinds.get(lot_project) == MTS
 
 
-def can_borrow(lot, project, order_type, kinds):
+BORROW_SOURCE_TYPES = ("Purchase", "Production")       # = Project Stock Reservation's SOURCE_TYPES
+
+
+def can_borrow(lot, project, order_type, kinds, types=None):
     """Whether free stock outside this plan's own may be borrowed (reserved) by it: purchased,
     not produced, stock of any project that is not made to order — a made-to-stock project, an
-    old project with no Order type — and old stock that came under no project at all."""
+    old project with no Order type — and old stock that came under no project at all. Not stock
+    of a project typed something other than Purchase or Production (Internal, External…): a
+    reservation refuses such a source, so offering it made Create fail.
+    types = {project: Project Type}."""
     if lot.get("produced"):
         return False
     if lot.get("project") and kinds.get(lot["project"]) == MTO:
+        return False
+    ptype = (types or {}).get(lot.get("project")) if lot.get("project") else None
+    if ptype and ptype not in BORROW_SOURCE_TYPES:
         return False
     return not counts_as_own(lot.get("project"), project, order_type, kinds)
 
@@ -143,6 +152,15 @@ def lot_project_kinds(lots):
                                fields=["name", "planning_order_type"], as_list=True))
 
 
+def lot_project_types(lots):
+    """{project: Project Type} for the projects the lots belong to."""
+    names = {l["project"] for ls in lots.values() for l in ls if l["project"]}
+    if not names:
+        return {}
+    return dict(frappe.get_all("Project", filters={"name": ["in", list(names)]},
+                               fields=["name", "project_type"], as_list=True))
+
+
 def reservable_summary(item_codes, project, order_type=MTO):
     """{item: summarise_free_stock(...)} of the stock a plan for `project` could reserve right
     now — its own free stock plus what it may borrow (can_borrow) — in the shape the free-stock
@@ -150,12 +168,12 @@ def reservable_summary(item_codes, project, order_type=MTO):
     measures against this: unnumbered rolls can't be reserved by a plan, so it buys instead,
     and the check must not then refuse the very request the plan sized."""
     lots = free_lots(item_codes)
-    kinds = lot_project_kinds(lots)
+    kinds, types = lot_project_kinds(lots), lot_project_types(lots)
     out = {}
     for item in {c for c in item_codes if c}:
         rows = [{"batch_no": l["batch_no"], "project": l["project"], "free_qty": l["qty"]}
                 for l in lots.get(item, [])
-                if counts_as_own(l["project"], project, order_type, kinds) or can_borrow(l, project, order_type, kinds)]
+                if counts_as_own(l["project"], project, order_type, kinds) or can_borrow(l, project, order_type, kinds, types)]
         out[item] = summarise_free_stock(rows, project)
     return out
 
@@ -391,13 +409,13 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
             come[code] = flt(come.get(code)) - q
             come_open[code] = max(0.0, flt(come_open.get(code)) - q)
 
-    kinds = lot_project_kinds(lots)
+    kinds, types = lot_project_kinds(lots), lot_project_types(lots)
 
     def is_own(lot):
         return counts_as_own(lot["project"], project, order_type, kinds)
 
     def is_borrowable(lot):
-        return can_borrow(lot, project, order_type, kinds)
+        return can_borrow(lot, project, order_type, kinds, types)
 
     groups = {}
     for code, it in info.items():

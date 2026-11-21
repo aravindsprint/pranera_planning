@@ -23,3 +23,4 @@ pranera_planning.patches.add_workstation_uom_field
 pranera_planning.patches.add_workstation_operation_output
 pranera_planning.patches.add_stock_project_indexes
 pranera_planning.patches.add_stock_entry_link_indexes
+pranera_planning.patches.keep_planning_indexes

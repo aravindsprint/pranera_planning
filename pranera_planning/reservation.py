@@ -1006,6 +1006,19 @@ def validate_stock_entry(doc, method=None):
         )
 
 
+def _voucher_batches(voucher_type, voucher_no, outgoing=False):
+    """Batches in the Serial and Batch Bundles of a voucher, cancelled bundles included
+    (outgoing=True: only the ones it took out of a warehouse)."""
+    if not voucher_no:
+        return set()
+    return set(frappe.db.sql_list(
+        f"""SELECT DISTINCT sbe.batch_no FROM `tabSerial and Batch Bundle` sbb
+            JOIN `tabSerial and Batch Entry` sbe ON sbe.parent = sbb.name
+            WHERE sbb.voucher_type = %(t)s AND sbb.voucher_no = %(v)s AND IFNULL(sbe.batch_no, '') <> ''
+            {"AND sbb.type_of_transaction = 'Outward'" if outgoing else ""}""",
+        {"t": voucher_type, "v": voucher_no}))
+
+
 def _row_batches(row):
     """Batches a Stock Entry row moves: its batch_no, else every batch in its bundle."""
     if row.get("batch_no"):
@@ -1169,6 +1182,11 @@ def update_fulfilment(doc, method=None):
     if not is_checked_entry(doc):
         return
     batches = {b for row in doc.items if row.s_warehouse for b in _row_batches(row) if b}
+    # On cancel ERPNext clears batch_no and serial_and_batch_bundle on the rows (delinks the
+    # bundles) before this hook runs, so the rows may name no batch at all; the bundles still
+    # point at the entry. Without this, Fulfilled reservations stayed Fulfilled after the
+    # issuing transfer was cancelled (chain test: 5 of 8 left Fulfilled with nothing issued).
+    batches |= _voucher_batches("Stock Entry", doc.name, outgoing=True)
     if batches:
         refresh_fulfilment(batches, exclude_voucher=doc.name if doc.docstatus == 2 else None)
 

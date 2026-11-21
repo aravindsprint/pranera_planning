@@ -6,7 +6,7 @@ What it carries
                          not the last-run stamps
   Supplier               Usual lead days
   Workstation            Planning stage, Output per hour, Planning UOM, dia, gauge,
-                         Production Capacity and the Output per operation table, for machines
+                         Production Capacity, Work-in-Progress Warehouse and the Output per operation table, for machines
                          that have a planning stage
   site_config.json       every project_stock_reservation_* key (stage prefixes and the rest)
 
@@ -36,7 +36,8 @@ SETTINGS = "Re-order Settings"
 SKIP_SETTINGS = {"last_run", "last_run_items"}
 STD = {"name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "parent", "parentfield",
        "parenttype", "doctype", "_user_tags", "_comments", "_assign", "_liked_by", "_seen"}
-WS_FIELDS = ("planning_stage", "kg_per_hour", "planning_uom", "machine_dia", "machine_gauge", "production_capacity")
+WS_FIELDS = ("planning_stage", "kg_per_hour", "planning_uom", "machine_dia", "machine_gauge", "production_capacity",
+             "warehouse")
 CONF_PREFIX = "project_stock_reservation_"
 LAYOUT = ("Section Break", "Column Break", "Tab Break", "HTML", "Button", "Heading", "Fold")
 
@@ -226,6 +227,14 @@ def _apply_workstations(wss, report, dry):
                                         "operation": o["operation"], "output_per_hour": o["output_per_hour"]}).db_insert()
         if values.get("planning_uom") and not frappe.db.exists("UOM", values["planning_uom"]):
             values.pop("planning_uom")
+        if not values.get("warehouse"):
+            values.pop("warehouse", None)                   # never clear a warehouse the site has set
+        else:
+            found = _exact("Warehouse", values["warehouse"])
+            if found and not frappe.db.get_value("Warehouse", found, "is_group"):
+                values["warehouse"] = found
+            else:
+                values.pop("warehouse")
         cur = frappe.db.get_value("Workstation", name, list(values), as_dict=True) or {}
         diff = {k: v for k, v in values.items() if _norm(cur.get(k)) != _norm(v)}
         if diff:

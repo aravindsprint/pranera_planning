@@ -5,7 +5,9 @@ Warn or Off.
 
 Work Order (validate)
     The machine booked for this item on the project's T&A plan is copied onto the operations
-    that have none (all of them when there is one operation, else those named like the stage).
+    that have none (all of them when there is one operation, else those named like the stage);
+    a draft with no operation gets the BOM's operation on that machine, and a draft with no
+    (or a group) WIP warehouse gets the machine's Work-in-Progress Warehouse.
     An operation on a machine of the same stage other than the booked one is refused on submit.
 Job Card (validate)
     On a machine other than the one booked: refused.
@@ -65,7 +67,68 @@ def _enforce(doc, problems, title):
                  title=title)
 
 
+def wip_of(workstation):
+    """The workstation's Work-in-Progress Warehouse, if it is a usable (non-group) warehouse."""
+    if not workstation:
+        return None
+    wh = frappe.db.get_value("Workstation", workstation, "warehouse")
+    if wh and not frappe.db.get_value("Warehouse", wh, "is_group"):
+        return wh
+    return None
+
+
+def _bom_operation(bom_no, stage):
+    """The BOM's first operation (else the stage name), for a Work Order made without one."""
+    op = frappe.db.get_value("BOM Operation", {"parent": bom_no, "parenttype": "BOM"}, "operation",
+                             order_by="idx asc") if bom_no else None
+    if not op and stage and frappe.db.exists("Operation", stage):
+        op = stage
+    return op
+
+
+def fill_from_booking(doc):
+    """Draft Work Order: take the machine booked on the T&A plan — add the operation when the
+    order has none, and use the machine's WIP warehouse when the order has none or a group one.
+
+    Work Orders made from Manufacture Material Requests (textiles_and_garments) come with no WIP
+    warehouse and no operations, and the dyeing WIP warehouses are groups; each one had to be
+    fixed by hand (chain test PORTAL/26/17: the dyeing order was amended twice)."""
+    if doc.docstatus != 0 or not doc.get("project") or not doc.get("production_item"):
+        return
+    ws, stage = booked_for(doc.project, doc.production_item)
+    if not ws:
+        return
+    if not doc.get("operations"):
+        op = _bom_operation(doc.get("bom_no"), stage)
+        if op:
+            w = frappe.db.get_value("Workstation", ws, ["workstation_type", "hour_rate"], as_dict=True) or {}
+            doc.append("operations", {"operation": op, "workstation": ws, "workstation_type": w.get("workstation_type"),
+                                      "hour_rate": w.get("hour_rate") or 0, "time_in_mins": 0.01, "sequence_id": 1,
+                                      "status": "Pending"})
+    wip = doc.get("wip_warehouse")
+    if not doc.get("skip_transfer") and (not wip or frappe.db.get_value("Warehouse", wip, "is_group")):
+        machine_wip = wip_of(ws)
+        if machine_wip:
+            doc.wip_warehouse = machine_wip
+
+
+def sync_drafts(project, item):
+    """After a booking: bring the project's draft Work Orders for the item onto the machine."""
+    for name in frappe.get_all("Work Order", filters={"project": project, "production_item": item, "docstatus": 0},
+                               pluck="name"):
+        wo = frappe.get_doc("Work Order", name)
+        before = (wo.wip_warehouse, len(wo.get("operations") or []))
+        fill_from_booking(wo)
+        if (wo.wip_warehouse, len(wo.get("operations") or [])) != before:
+            wo.flags.ignore_permissions = True
+            wo.save()
+
+
 def work_order(doc, method=None):
+    try:
+        fill_from_booking(doc)
+    except Exception:
+        frappe.log_error(title="Filling a Work Order from its T&A booking failed")
     if _mode() == "Off" or not doc.get("project") or not doc.get("production_item"):
         return
     try:

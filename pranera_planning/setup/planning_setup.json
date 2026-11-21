@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-20 13:40:00",
+ "exported_on": "2026-11-21 12:30:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -595,7 +595,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK01/6014/PL/KH - PSS"
   },
   "FK02/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -613,7 +614,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK02/6014/PL/KH - PSS"
   },
   "FK03/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -631,7 +633,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK03/6014/PL/KH - PSS"
   },
   "FK04/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -649,7 +652,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK04/6014/PL/KH - PSS"
   },
   "FK05/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -667,7 +671,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK05/6014/PL/KH - PSS"
   },
   "FK06/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -685,7 +690,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK06/6014/PL/KH - PSS"
   },
   "FK07/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -703,7 +709,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK07/6014/PL/KH - PSS"
   },
   "FK08/6014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -721,7 +728,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK08/6014/PL/KH - PSS"
   },
   "FK09/8014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -739,7 +747,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK09/8014/PL/KH - PSS"
   },
   "FK10/8014/PL/KH": {
    "kg_per_hour": 40.0,
@@ -757,7 +766,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK10/8014/PL/KH - PSS"
   },
   "FK11/4014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -775,7 +785,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK11/4014/SJ/KH - PSS"
   },
   "FK12/4014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -793,7 +804,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK12/4014/SJ/KH - PSS"
   },
   "FK13/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -811,7 +823,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK13/6014/SJ/KH - PSS"
   },
   "FK14/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -829,7 +842,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK14/6014/SJ/KH - PSS"
   },
   "FK15/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -847,7 +861,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK15/6014/SJ/KH - PSS"
   },
   "FK16/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -865,7 +880,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK16/6014/SJ/KH - PSS"
   },
   "FK17/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -883,7 +899,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK17/6014/SJ/KH - PSS"
   },
   "FK18/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -901,7 +918,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK18/6014/SJ/KH - PSS"
   },
   "FK19/6014/SJ/KH": {
    "kg_per_hour": 20.0,
@@ -919,7 +937,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK19/6014/SJ/KH - PSS"
   },
   "FK20/6014/SJ/KH": {
    "kg_per_hour": 20.0,
@@ -937,7 +956,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK20/6014/SJ/KH - PSS"
   },
   "FK21/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -955,7 +975,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK21/6014/SJ/KH - PSS"
   },
   "FK22/6014/SJ/KH": {
    "kg_per_hour": 40.0,
@@ -973,7 +994,8 @@
    ],
    "planning_stage": "Knitting",
    "planning_uom": "Pcs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "WIP - FK22/6014/SJ/KH - PSS"
   },
   "HTHP JET DYEING-TONYSS-300KGS": {
    "kg_per_hour": 27.4,
@@ -982,7 +1004,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": null
   },
   "HTHP SOFTLOW-MARVEL-1200KGS": {
    "kg_per_hour": 109.5,
@@ -991,7 +1014,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": null
   },
   "HTHP SOFTLOW-PROTEX-1000KGS": {
    "kg_per_hour": 91.2,
@@ -1000,7 +1024,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": null
   },
   "HTHP SOFTLOW-PROTEX-750KGS": {
    "kg_per_hour": 68.4,
@@ -1009,7 +1034,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": null
   },
   "HTHP SOFTLOW-TONYSS-900KGS": {
    "kg_per_hour": 82.1,
@@ -1018,7 +1044,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": null
   },
   "HTHP Soft Flow(SP)-NUVAS-100KGS": {
    "kg_per_hour": 10.5,
@@ -1027,7 +1054,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-100KGS - PSS"
   },
   "HTHP Soft Flow(SP)-NUVAS-25KGS": {
    "kg_per_hour": 2.2,
@@ -1036,7 +1064,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-25KGS - PSS"
   },
   "HTHP Soft Flow(SP)-NUVAS-300KGS": {
    "kg_per_hour": 36.0,
@@ -1045,7 +1074,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-300KGS - PSS"
   },
   "HTHP Soft Flow(SP)-NUVAS-50KGS": {
    "kg_per_hour": 4.6,
@@ -1054,7 +1084,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-50KGS - PSS"
   },
   "HTHP Soft Flow(SP)-NUVAS-600KGS": {
    "kg_per_hour": 112.5,
@@ -1063,7 +1094,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-600KGS - PSS"
   },
   "HTHP Softflow-PRANAV-1000KGS": {
    "kg_per_hour": 91.2,
@@ -1072,7 +1104,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-PRANAV-1000KGS - PSS"
   },
   "HTHP Softflow-PRANAV-300KGS": {
    "kg_per_hour": 23.1,
@@ -1081,7 +1114,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-PRANAV-300KGS - PSS"
   },
   "HTHP Softflow-PRANAV-600KGS": {
    "kg_per_hour": 63.9,
@@ -1090,7 +1124,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-PRANAV-600KGS - PSS"
   },
   "HTHP Softflow-RBT-1600KGS": {
    "kg_per_hour": 134.4,
@@ -1099,7 +1134,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-RBT-1600KGS - PSS"
   },
   "HTHP Softflow-RBT-25KGS": {
    "kg_per_hour": 2.2,
@@ -1108,7 +1144,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-RBT-25KGS - PSS"
   },
   "HTHP Softflow-SHRIJI-50KGS": {
    "kg_per_hour": 4.6,
@@ -1117,7 +1154,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-SHRIJI-50KGS - PSS"
   },
   "HTHP Softflow-TONYS-900KGS": {
    "kg_per_hour": 82.1,
@@ -1126,7 +1164,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "HTHP Softflow-TONYS-900KGS - PSS"
   },
   "HTHP-JET DYEING-TONGHUA-1200KGS": {
    "kg_per_hour": 86.3,
@@ -1135,7 +1174,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "JD-4-TH1200 - PSS"
   },
   "HTHP-JET DYEING-TONGHUA-300KGS": {
    "kg_per_hour": 24.8,
@@ -1144,7 +1184,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "JD-2-TH300 - PSS"
   },
   "HTHP-JET DYEING-TONGHUA-50KGS": {
    "kg_per_hour": 4.6,
@@ -1153,7 +1194,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "JD-1-TH50 - PSS"
   },
   "HTHP-JET DYEING-TONGHUA-600KGS": {
    "kg_per_hour": 80.6,
@@ -1162,7 +1204,8 @@
    "operation_outputs": [],
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "JD-3-TH600 - PSS"
   },
   "IL01/3428/FK": {
    "kg_per_hour": 6.3,
@@ -1171,7 +1214,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "IL01-FUKUHARA 34 DIA 28GG - PSS"
   },
   "IL02/3432/FK": {
    "kg_per_hour": 6.9,
@@ -1180,7 +1224,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "IL02-FUKUHARA 34 DIA 32GG - PSS"
   },
   "IL03/3028/FK": {
    "kg_per_hour": 8.6,
@@ -1189,7 +1234,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "IL03-FUKUHARA 30 DIA 28GG - PSS"
   },
   "IL04/3028/FK": {
    "kg_per_hour": 8.1,
@@ -1198,7 +1244,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "IL04-FUKUHARA 30 DIA 28GG - PSS"
   },
   "SJ01/2828/PL": {
    "kg_per_hour": 9.8,
@@ -1207,7 +1254,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ01-PAILUNG 28 DIA 28GG - PSS"
   },
   "SJ02/2624/TR": {
    "kg_per_hour": 11.6,
@@ -1216,7 +1264,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ02-LAXMI TERROT 26 DIA 24GG - PSS"
   },
   "SJ03/2624/TR": {
    "kg_per_hour": 8.0,
@@ -1225,7 +1274,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ03-GERMAN TERROT 26 DIA 24GG - PSS"
   },
   "SJ04/2828/FK": {
    "kg_per_hour": 16.5,
@@ -1234,7 +1284,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ04-FUKUHARA 28 DIA 28GG - PSS"
   },
   "SJ05/2828/FK": {
    "kg_per_hour": 16.5,
@@ -1243,7 +1294,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ05-FUKUHARA 28 DIA 28GG - PSS"
   },
   "SJ06/2828/FK": {
    "kg_per_hour": 16.5,
@@ -1252,7 +1304,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ06-FUKUHARA 28 DIA 28GG - PSS"
   },
   "SJ07/2828/UT": {
    "kg_per_hour": 9.7,
@@ -1261,7 +1314,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ07-UNITEX 28 DIA 28GG - PSS"
   },
   "SJ08/3028/UT": {
    "kg_per_hour": 11.6,
@@ -1270,7 +1324,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ08-UNITEX 30 DIA 28GG - PSS"
   },
   "SJ09/3224/UT": {
    "kg_per_hour": 9.0,
@@ -1279,7 +1334,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ09-UNITEX 32 DIA 24GG - PSS"
   },
   "SJ10/3428/UT": {
    "kg_per_hour": 11.4,
@@ -1288,7 +1344,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ10-UNITEX 34 DIA 28GG - PSS"
   },
   "SJ11/3432/JG": {
    "kg_per_hour": 11.9,
@@ -1297,7 +1354,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ11-JINGHE 34 DIA 32GG - PSS"
   },
   "SJ12/3026/JG": {
    "kg_per_hour": 13.9,
@@ -1306,7 +1364,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ12-JINGHE 30 DIA 26GG - PSS"
   },
   "SJ13/3026/JG": {
    "kg_per_hour": 14.1,
@@ -1315,7 +1374,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ13-JINGHE 30 DIA 26GG - PSS"
   },
   "SJ14/3428/FK": {
    "kg_per_hour": 11.6,
@@ -1324,7 +1384,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ14-FUKUHARA 34 DIA 28GG - PSS"
   },
   "SJ15/3428/FK": {
    "kg_per_hour": 20.2,
@@ -1333,7 +1394,8 @@
    "operation_outputs": [],
    "planning_stage": "Knitting",
    "planning_uom": "Kgs",
-   "production_capacity": 1
+   "production_capacity": 1,
+   "warehouse": "SJ15-FUKUHARA 34 DIA 28GG - PSS"
   }
  }
 }

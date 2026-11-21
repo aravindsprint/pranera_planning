@@ -130,6 +130,11 @@ def allocate(activity, workstation, start=None, override_reason=None):
     frappe.db.set_value(ACT, row.name, values)              # a child row: written directly
     plan.db_set("modified", frappe.utils.now(), update_modified=False)
     row.update(values)
+    try:                                                    # put drafts already made on the machine
+        from pranera_planning.ta_checks import sync_drafts
+        sync_drafts(plan.project, row.item_code)
+    except Exception:
+        frappe.log_error(title="Moving draft Work Orders onto the booked machine failed")
     late = row.planned_end and plan.deliver_on and getdate(row.planned_end) > getdate(plan.deliver_on)
     return {"activity": row.name, "start": str(start), "end": str(end), "working_days": n_days, "after_delivery": bool(late)}
 

@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-22 12:35:00",
+ "exported_on": "2026-11-22 15:20:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -1408,6 +1408,16 @@
    "planning_uom": "Kgs",
    "production_capacity": 1,
    "warehouse": "SJ15-FUKUHARA 34 DIA 28GG - PSS"
+  },
+  "ST01/MTXC9C": {
+   "kg_per_hour": 450,
+   "machine_dia": null,
+   "machine_gauge": null,
+   "operation_outputs": [],
+   "planning_stage": "Finishing",
+   "planning_uom": "Kgs",
+   "production_capacity": 1,
+   "warehouse": "WIP - ST01/MTXC9C - PSS"
   }
  }
 }

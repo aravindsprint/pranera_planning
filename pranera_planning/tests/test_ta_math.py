@@ -46,6 +46,33 @@ class TestComing(unittest.TestCase):
         self.assertEqual(T.schedule(lv, "2026-11-24")[0]["qty"], 2000.0)
 
 
+class TestSplitByRoute(unittest.TestCase):
+    def test_a_level_partly_with_a_job_worker_is_two_activities(self):
+        lv = [{"item": "GKF", "request": 30, "coming": 70, "coming_job_work": 0, "made": True, "depth": 0,
+               "stage": "Knitting", "route": "Job work", "stage_days": 20,
+               "stage_days_by_route": {"In-house": 7, "Job work": 20}}]
+        acts = {a["route"]: a for a in T.schedule(lv, "2026-12-31") if a["kind"] == T.STAGE}
+        self.assertEqual((acts["In-house"]["qty"], acts["Job work"]["qty"]), (70.0, 30.0))
+        self.assertEqual((acts["In-house"]["duration_days"], acts["Job work"]["duration_days"]), (7, 20))
+
+    def test_job_work_back_to_in_house(self):
+        lv = [{"item": "SKF", "request": 40, "coming": 60, "coming_job_work": 60, "made": True, "depth": 0,
+               "stage": "Finishing", "route": "In-house", "stage_days": 3}]
+        acts = {a["route"]: a["qty"] for a in T.schedule(lv, "2026-12-31") if a["kind"] == T.STAGE}
+        self.assertEqual(acts, {"In-house": 40.0, "Job work": 60.0})
+
+    def test_a_booking_stays_with_its_in_house_part(self):
+        lv = [{"item": "GKF", "request": 0, "coming": 100, "coming_job_work": 0, "made": True, "depth": 0,
+               "stage": "Knitting", "route": "In-house", "stage_days": 7}]
+        old = T.schedule(lv, "2026-12-31")
+        old[0].update(workstation="FK01", planned_start="2026-12-01", planned_end="2026-12-05")
+        lv[0].update(coming_job_work=30)                                    # 30 moved to job work
+        out = {(a["route"], a["kind"]): a for a in T.merge(old, T.schedule(lv, "2026-12-31"))}
+        self.assertEqual(out[("In-house", T.STAGE)]["workstation"], "FK01")
+        self.assertEqual(out[("In-house", T.STAGE)]["qty"], 70.0)
+        self.assertFalse(out[("Job work", T.STAGE)].get("workstation"))
+
+
 class TestMerge(unittest.TestCase):
     def test_a_started_activity_no_longer_needed_stays_as_history(self):
         old = T.schedule([{"item": "YARN", "request": 2000, "made": False, "depth": 0, "lead_days": 45}], "2026-11-24")

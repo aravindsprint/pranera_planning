@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 
 NOT_STARTED, IN_PROGRESS, DONE = "Not started", "In progress", "Done"
 STAGE, BOUGHT, MILESTONE = "Stage", "Bought", "Milestone"
+IN_HOUSE, JOB_WORK = "In-house", "Job work"
 DONE_SHARE = 0.98          # 98 % of the planned quantity in counts as done (losses, rounding)
 
 
@@ -51,6 +52,20 @@ def schedule(levels, deliver_on, final_label="Ready to deliver"):
         # all of the project's own open requests and orders, even beyond what the plan counted
         coming = max(float(lv.get("coming") or 0), float(lv.get("coming_all") or 0))
         return float(lv.get("request") or 0) + coming
+
+    def parts(lv):
+        """[(route, qty)]: a made level split between in-house and job work — part of an item can
+        be on the project's Manufacture requests / Work Orders and part with a job worker, and
+        each part is its own activity (only the in-house part is booked on a machine)."""
+        total = todo(lv)
+        if not lv.get("made"):
+            return [("Bought", total)]
+        route = lv.get("route") or "In-house"
+        jw = float(lv.get("coming_job_work") or 0) + (float(lv.get("request") or 0) if route == JOB_WORK else 0)
+        jw = min(jw, total)
+        out = [(r, q) for r, q in ((IN_HOUSE, total - jw), (JOB_WORK, jw)) if q > 1e-6]
+        return out or [(route, total)]
+
     work = [lv for lv in levels if todo(lv) > 0]
     by_depth = {}
     for lv in work:
@@ -61,20 +76,22 @@ def schedule(levels, deliver_on, final_label="Ready to deliver"):
         starts = []
         for lv in by_depth[depth]:
             made = bool(lv.get("made"))
-            dur = _days(lv.get("stage_days") if made else lv.get("lead_days"))
-            start = end - timedelta(days=dur)
-            starts.append(start)
-            acts.append({
-                "activity": (lv.get("stage") or "Make") if made else "Buy",
-                "kind": STAGE if made else BOUGHT,
-                "stage": lv.get("stage") if made else "",
-                "item_code": lv["item"], "item_name": lv.get("item_name") or lv["item"],
-                "qty": round(todo(lv), 3), "uom": lv.get("uom") or "",
-                "route": (lv.get("route") or "In-house") if made else "Bought",
-                "supplier": lv.get("supplier") or "", "service": lv.get("service") or "",
-                "duration_days": dur, "planned_start": str(start), "planned_end": str(end),
-                "depth": depth, "source": "plan",
-            })
+            for route, qty in parts(lv):
+                days = (lv.get("stage_days_by_route") or {}).get(route) if made else None
+                dur = _days(days if days is not None else lv.get("stage_days") if made else lv.get("lead_days"))
+                start = end - timedelta(days=dur)
+                starts.append(start)
+                acts.append({
+                    "activity": (lv.get("stage") or "Make") if made else "Buy",
+                    "kind": STAGE if made else BOUGHT,
+                    "stage": lv.get("stage") if made else "",
+                    "item_code": lv["item"], "item_name": lv.get("item_name") or lv["item"],
+                    "qty": round(qty, 3), "uom": lv.get("uom") or "",
+                    "route": route,
+                    "supplier": lv.get("supplier") or "", "service": lv.get("service") or "",
+                    "duration_days": dur, "planned_start": str(start), "planned_end": str(end),
+                    "depth": depth, "source": "plan",
+                })
         end = min(starts)
 
     acts.sort(key=lambda a: (-a["depth"], a["planned_start"], a["item_code"]))
@@ -92,18 +109,20 @@ def merge(old, new):
     a workstation, keep their planned dates and machine (only the quantity follows the new
     plan); manual milestones stay; the first
     planned end ever given to an activity stays as its baseline, to show how far it slipped."""
-    started = {(a.get("kind"), a.get("item_code")): a for a in old
+    def k(a):                                           # one activity per item and route
+        return (a.get("kind"), a.get("item_code"), a.get("route") or "")
+    started = {k(a): a for a in old
                if a.get("source") == "plan" and a.get("kind") != MILESTONE and a.get("actual_start")}
     # booked on a workstation: the booking is a commitment, so its dates and machine stay too
-    booked = {(a.get("kind"), a.get("item_code")): a for a in old
+    booked = {k(a): a for a in old
               if a.get("source") == "plan" and a.get("kind") != MILESTONE and a.get("workstation")
               and not a.get("actual_start")}
     baseline = {(a.get("kind"), a.get("item_code"), a.get("activity")): a.get("baseline_end") or a.get("planned_end")
                 for a in old if a.get("source") == "plan"}
     out, matched = [], set()
     for a in new:
-        matched.add((a["kind"], a["item_code"]))
-        key = (a["kind"], a["item_code"])
+        key = k(a)
+        matched.add(key)
         keep = started.get(key) or booked.get(key)
         if keep and a["kind"] != MILESTONE:
             a = {**a, "planned_start": keep.get("planned_start"), "planned_end": keep.get("planned_end"),

@@ -255,13 +255,7 @@ def coming(project, items):
     add(frappe.db.sql(f"""SELECT production_item, SUM(GREATEST(qty - produced_qty, 0)), COUNT(*) FROM `tabWork Order`
                           WHERE docstatus = 1 AND status NOT IN {DONE} AND project = %(p)s AND production_item IN %(items)s
                           GROUP BY production_item""", v), "Work Orders:")
-    sco_items = project_sco_items(project)
-    if sco_items:
-        add(frappe.db.sql(f"""SELECT soi.item_code, SUM(GREATEST(soi.qty - soi.received_qty, 0) * IFNULL(NULLIF(soi.conversion_factor, 0), 1)), COUNT(*)
-                              FROM `tabSubcontracting Order Item` soi
-                              JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1 AND sco.status NOT IN {DONE}
-                              WHERE soi.name IN %(sco)s AND soi.item_code IN %(items)s
-                              GROUP BY soi.item_code""", {**v, "sco": sco_items}), "Subcontracting Orders:")
+    add(_sco_open(project, items), "Subcontracting Orders:")
     add(frappe.db.sql(f"""SELECT poi.item_code, SUM(GREATEST(poi.qty - poi.received_qty, 0) * IFNULL(NULLIF(poi.conversion_factor, 0), 1)), COUNT(*)
                           FROM `tabPurchase Order Item` poi
                           JOIN `tabPurchase Order` po ON po.name = poi.parent AND po.docstatus = 1
@@ -286,6 +280,28 @@ def coming(project, items):
         qty[item] += q
         src[item] += jw_src.get(item, [])
     return qty, src
+
+
+def _sco_open(project, items):
+    """[(item, open qty, orders)] of the project's open Subcontracting Orders for `items`."""
+    sco_items = project_sco_items(project)
+    if not sco_items or not items:
+        return []
+    return frappe.db.sql(f"""SELECT soi.item_code, SUM(GREATEST(soi.qty - soi.received_qty, 0) * IFNULL(NULLIF(soi.conversion_factor, 0), 1)), COUNT(*)
+                             FROM `tabSubcontracting Order Item` soi
+                             JOIN `tabSubcontracting Order` sco ON sco.name = soi.parent AND sco.docstatus = 1 AND sco.status NOT IN {DONE}
+                             WHERE soi.name IN %(sco)s AND soi.item_code IN %(items)s
+                             GROUP BY soi.item_code""", {"items": tuple(items), "sco": sco_items})
+
+
+def coming_job_work(project, items):
+    """{item: qty} of the project's coming that is with job workers: job-work requests and
+    subcontracted Purchase Orders (jobwork.py) and open Subcontracting Orders."""
+    from pranera_planning import jobwork
+    out = defaultdict(float, jobwork.coming(project, items)[0]) if project and items else defaultdict(float)
+    for item, q, _n in _sco_open(project, items) if project else []:
+        out[item] += flt(q)
+    return out
 
 
 def coming_open(project, items):
@@ -415,6 +431,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     held = held_for(project, codes)
     come, come_src = coming(project, codes)
     come_open = coming_open(project, [c for c in codes if c in boms]) if rules["explode"] else {}
+    come_jw = coming_job_work(project, [c for c in codes if c in boms]) if rules["explode"] else {}
     # quantity the user moves between the project's in-house and job-work requests (mr_moves.py):
     # to job work off the Manufacture requests, back to in-house off the job-work requests
     from pranera_planning.mr_moves import JOB_WORK, MANUFACTURE, movable
@@ -507,7 +524,8 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         stage = stage_of(code, it.get("item_group")) if r["made"] else ""
         srow = stage_rows.get(stage.lower()) if stage else None
         route = (routes.get(code) or (srow.route if srow and srow.route else "In-house")) if r["made"] else ""
-        days_route = (cfg.get("stage_route_days") or {}).get(stage.lower(), {}).get(route) if r["made"] and stage else None
+        route_days = (cfg.get("stage_route_days") or {}).get(stage.lower(), {}) if r["made"] and stage else {}
+        days_route = route_days.get(route) if r["made"] and stage else None
         options = [x.strip() for x in ((srow.get("job_work_services") if srow else "") or "").split(",") if x.strip()]
         if previous.get(code) and previous[code] not in options:
             options = [previous[code]] + options
@@ -539,6 +557,9 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "feeds_coming": r.get("feeds_coming", 0.0),
                        "how": [t for _q, t in r["how"]], "item_name": it.get("item_name"), "uom": it.get("stock_uom"),
                        "coming_all": flt((data.get(code) or {}).get("coming")),
+                       # with job workers, after any move: the T&A plan splits the stage by route
+                       "coming_job_work": max(0.0, flt(come_jw.get(code)) - (moved.get(code, 0.0) if moved_from.get(code) == JOB_WORK else 0.0)),
+                       "stage_days_by_route": dict(route_days),
                        "stage": stage or ("Bought" if not r["made"] else ""), "route": route, "stage_days": days_route,
                        "service": service if r["made"] else None, "service_options": options if r["made"] else [],
                        "bom": boms.get(code) if r["made"] else None, "bom_options": bom_options.get(code, []) if r["made"] else [],

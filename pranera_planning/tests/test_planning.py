@@ -61,6 +61,7 @@ class TestPropose(unittest.TestCase):
             return boms, rows
         P.bom_tree = bom_tree
         P.last_service = lambda items: {SKF: "DRYER"}                      # this fabric last went to the dryer
+        P.coming_job_work = lambda project, items: {}
         P.request_warehouse = lambda item, comp, settings, **kw: ("Stores - PSS", "item default")
         f.get_all = lambda doctype, filters=None, fields=None, as_list=False, **kw: (
             ([("26PTIN1710", "Production"), ("25PUR001", "Purchase"), ("26STK-OLD", "Purchase")]

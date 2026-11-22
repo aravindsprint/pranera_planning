@@ -180,6 +180,11 @@
                         </div>
                         <div v-if="r.moved" class="sub picked">{{ fmt(r.moved) }} moved: on Create the {{ r.move_from === 'Job work' ? 'job-work' : 'Manufacture' }} request is reduced by it</div>
                       </div>
+                      <div v-if="r.made && r.move_held_by && r.move_held_by.length" class="sub warn-line">
+                        {{ r.move_from === 'Job work' ? 'Also with the job worker' : 'Also on' }}:
+                        <template v-for="(h, i) in r.move_held_by" :key="h.doc">{{ i ? ', ' : '' }}<a :href="`/app/${h.doctype.toLowerCase().replace(/ /g, '-')}/${encodeURIComponent(h.doc)}`" target="_blank">{{ h.doc }}</a> ({{ fmt(h.qty) }}{{ h.started ? ', started' : '' }})</template>
+                        — {{ r.move_from === 'Job work' ? 'to bring that in-house, cancel or reduce the order first' : 'to move that to job work, cancel or reduce the Work Order first (not once started)' }}, then plan again.
+                      </div>
                       <div v-if="!r.request" class="sub">nothing to make</div>
                       <div v-else-if="r.route === 'Job work'" class="sub">
                         Purchase request ·
@@ -526,6 +531,7 @@ onMounted(() => {
 .badge-muted { background: var(--slate-100); color: var(--slate-500); }
 .linkish { border: 0; background: none; padding: 0; margin-top: 2px; color: var(--primary); text-decoration: underline; cursor: pointer; font-size: 12px; }
 .picked { color: #1d4ed8; }
+.warn-line { color: #9a3412; }
 .move { margin: 6px 0; padding: 6px 8px; border: 1px dashed var(--slate-200); border-radius: 6px; }
 .move__row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .form-input.mv { width: 100px; text-align: right; }

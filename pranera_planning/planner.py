@@ -434,8 +434,10 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     come_jw = coming_job_work(project, [c for c in codes if c in boms]) if rules["explode"] else {}
     # quantity the user moves between the project's in-house and job-work requests (mr_moves.py):
     # to job work off the Manufacture requests, back to in-house off the job-work requests
-    from pranera_planning.mr_moves import JOB_WORK, MANUFACTURE, movable
+    from pranera_planning.mr_moves import JOB_WORK, MANUFACTURE, movable, ordered
     made_codes = [c for c in codes if c in boms]
+    held_by = {MANUFACTURE: ordered(project, made_codes, MANUFACTURE), JOB_WORK: ordered(project, made_codes, JOB_WORK)} \
+        if rules["explode"] and project else {MANUFACTURE: {}, JOB_WORK: {}}
     can_move = {MANUFACTURE: movable(project, made_codes, MANUFACTURE), JOB_WORK: movable(project, made_codes, JOB_WORK)} \
         if rules["explode"] and project else {MANUFACTURE: {}, JOB_WORK: {}}
     stage_rows = {(r.stage or "").strip().lower(): r for r in settings.stage_leads}
@@ -571,6 +573,8 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        if r["reserve"] > EPS else [],
                        "movable": flt(can_move[MANUFACTURE if route == "Job work" else JOB_WORK].get(code)) if r["made"] else 0.0,
                        "move_from": (MANUFACTURE if route == "Job work" else JOB_WORK) if r["made"] else None,
+                       # already a Work Order / job-work order: can't be moved until that is cancelled
+                       "move_held_by": held_by[MANUFACTURE if route == "Job work" else JOB_WORK].get(code, []) if r["made"] else [],
                        "moved": moved.get(code, 0.0),
                        "lots_picked": code in picked_by_user,
                        "lots": [{"key": lot_key(l), "project": l["project"], "batch_no": l["batch_no"], "warehouse": l["warehouse"],

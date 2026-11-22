@@ -279,6 +279,12 @@ def coming(project, items):
                               AND mr.material_request_type IN ('Purchase', 'Manufacture')
                              WHERE mri.name IN %(mri)s GROUP BY mri.item_code""", {"mri": tuple(set(mr_items))}),
             "Material Requests (incl. drafts):")
+    # job work names the service, not the item: count it under the item it makes (jobwork.py)
+    from pranera_planning import jobwork
+    jw, jw_src = jobwork.coming(project, items)
+    for item, q in jw.items():
+        qty[item] += q
+        src[item] += jw_src.get(item, [])
     return qty, src
 
 
@@ -404,16 +410,34 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
     held = held_for(project, codes)
     come, come_src = coming(project, codes)
     come_open = coming_open(project, [c for c in codes if c in boms]) if rules["explode"] else {}
-    # quantity the user moves from the project's Manufacture requests to job work (mr_moves.py)
-    from pranera_planning.mr_moves import movable
-    can_move = movable(project, [c for c in codes if c in boms]) if rules["explode"] and project else {}
-    moved = {}
+    # quantity the user moves between the project's in-house and job-work requests (mr_moves.py):
+    # to job work off the Manufacture requests, back to in-house off the job-work requests
+    from pranera_planning.mr_moves import JOB_WORK, MANUFACTURE, movable
+    made_codes = [c for c in codes if c in boms]
+    can_move = {MANUFACTURE: movable(project, made_codes, MANUFACTURE), JOB_WORK: movable(project, made_codes, JOB_WORK)} \
+        if rules["explode"] and project else {MANUFACTURE: {}, JOB_WORK: {}}
+    stage_rows = {(r.stage or "").strip().lower(): r for r in settings.stage_leads}
+    previous_service = last_service(made_codes) if payload.get("moves") else {}
+
+    def _job_work_service(code, payload):
+        """True when job work for `code` would have a service to go on (else it is planned in-house)."""
+        if (payload.get("services") or {}).get(code) or previous_service.get(code):
+            return True
+        it = info.get(code) or {}
+        srow = stage_rows.get((stage_of(code, it.get("item_group")) or "").lower())
+        return bool(srow and (srow.get("job_work_services") or "").strip())
+    moved, moved_from = {}, {}
     for code, q in (payload.get("moves") or {}).items():
-        q = min(flt(q), flt(can_move.get(code)), flt(come.get(code)))
-        if q > EPS and (payload.get("routes") or {}).get(code) == "Job work":
-            moved[code] = q
+        route = (payload.get("routes") or {}).get(code)
+        source = MANUFACTURE if route == "Job work" else JOB_WORK if route == "In-house" else None
+        if not source or (route == "Job work" and not _job_work_service(code, payload)):
+            continue                                       # no job-work service: it would stay in-house anyway
+        q = min(flt(q), flt(can_move[source].get(code)), flt(come.get(code)))
+        if q > EPS:
+            moved[code], moved_from[code] = q, source
             come[code] = flt(come.get(code)) - q
-            come_open[code] = max(0.0, flt(come_open.get(code)) - q)
+            if source == MANUFACTURE:                      # only in-house coming needs its input here
+                come_open[code] = max(0.0, flt(come_open.get(code)) - q)
 
     kinds, types = lot_project_kinds(lots), lot_project_types(lots)
 
@@ -520,7 +544,9 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
                        "coming_from": come_src.get(code, []), "held": held_here,
                        "reserve_from": sorted({l["project"] or "old stock (no project)" for l in allocate_lots(borrow_lots[code], r["reserve"])[0]})[:3]
                        if r["reserve"] > EPS else [],
-                       "movable": flt(can_move.get(code)) if r["made"] else 0.0, "moved": moved.get(code, 0.0),
+                       "movable": flt(can_move[MANUFACTURE if route == "Job work" else JOB_WORK].get(code)) if r["made"] else 0.0,
+                       "move_from": (MANUFACTURE if route == "Job work" else JOB_WORK) if r["made"] else None,
+                       "moved": moved.get(code, 0.0),
                        "lots_picked": code in picked_by_user,
                        "lots": [{"key": lot_key(l), "project": l["project"], "batch_no": l["batch_no"], "warehouse": l["warehouse"],
                                  "roll_no": l.get("roll_no") or "", "free": round(l["qty"], 3)} for l in all_borrow.get(code, [])],
@@ -573,7 +599,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
             "missing_warehouse": sorted(set(missing)),
             "sales_order": payload.get("sales_order") if order_type == MTO else None,
             "lines": lines, "levels": levels, "reservations": reservations, "requests": requests, "warnings": warnings,
-            "moves": [{"item": c, "qty": q} for c, q in moved.items()],
+            "moves": [{"item": c, "qty": q, "from": moved_from[c]} for c, q in moved.items()],
             "stock_before": {ln["item"]: flt((data.get(ln["item"]) or {}).get("own")) + flt((data.get(ln["item"]) or {}).get("coming"))
                              for ln in lines},
             "totals": {"own": sum(l["own"] for l in levels), "coming": coming_total(levels),
@@ -721,11 +747,11 @@ def _create_one(prop):
         doc.insert()
         made_res.append(doc.name)
 
-    # quantity moved to job work: take it off the Manufacture requests first
-    from pranera_planning.mr_moves import reduce
+    # quantity moved between in-house and job work: take it off the requests it came from first
+    from pranera_planning.mr_moves import MANUFACTURE, reduce
     moved_notes = []
     for mv in prop.get("moves") or []:
-        moved_notes += reduce(project, mv["item"], mv["qty"])
+        moved_notes += reduce(project, mv["item"], mv["qty"], mv.get("from") or MANUFACTURE)
 
     made_mr = []
     kinds = {"Manufacture": "Manufacture", "Job work": "Purchase", "Purchase": "Purchase"}

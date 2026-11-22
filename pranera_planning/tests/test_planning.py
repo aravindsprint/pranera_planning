@@ -143,6 +143,33 @@ class TestPropose(unittest.TestCase):
         self.assertEqual(sorted((r["item_code"], r["qty"]) for r in req["Purchase"]), [(YPP, 800), (YSP, 50)])
         self.assertEqual(p["warnings"], [])
 
+    def test_moving_job_work_back_to_in_house_and_in_house_to_job_work(self):
+        import pranera_planning.mr_moves as M
+        saved, saved_coming = M.movable, self.P.coming
+        # SKF: 500 already on a job-work request; DKF: 300 on a Manufacture request
+        M.movable = lambda project, items, source="Manufacture": {SKF: 500} if source == "Job work" else {DKF: 300, GKF: 0}
+        try:
+            self.P.coming = lambda project, codes: ({YSP: 100, SKF: 500, DKF: 300}, {})
+            p = self.run_mto_with({"routes": {SKF: "In-house", DKF: "Job work"}, "moves": {SKF: 200, DKF: 100}})
+        finally:
+            M.movable, self.P.coming = saved, saved_coming
+        moves = {m["item"]: (m["qty"], m["from"]) for m in p["moves"]}
+        self.assertEqual(moves, {SKF: (200, "Job work")})                 # DKF: no dyeing job-work service, not moved
+        lv = {r["item"]: r for r in p["levels"]}
+        self.assertEqual(lv[SKF]["move_from"], "Job work")
+        self.assertEqual(lv[SKF]["coming"], 300)                          # 500 coming less the 200 moved back
+        self.assertIn((SKF, 1700), [(r["item_code"], r["qty"]) for r in p["requests"]["Manufacture"]])
+        self.assertEqual(p["requests"]["Job work"], [])
+
+    def run_mto_with(self, extra):
+        P = self.P
+        P.free_lots = lambda codes: {}
+        P.held_for = lambda project, codes: {}
+        self.f.db.get_value = lambda dt, name, fields=None, **kw: _dict(name="26PTIN1710", project_name="26PTIN1710",
+                                                                         project_type="Production", status="Open", customer=None)
+        return P.propose({"order_type": "Made to order", "project": "26PTIN1710", "sales_order": "SO-1", "needed_by": "2026-11-15",
+                          "lines": [{"item": SKF, "qty": 2000}], **extra})[0]
+
     def test_process_loss_raises_the_input_per_unit(self):
         f, saved_all, saved_sql = self.f, self.f.get_all, self.f.db.sql
         f.get_all = lambda doctype, filters=None, fields=None, **kw: (

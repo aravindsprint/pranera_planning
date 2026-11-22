@@ -192,6 +192,11 @@ def on_order(items):
             AND mr.status IN ('Pending', 'Partially Ordered') AND mr.material_request_type IN ('Purchase', 'Manufacture')
            WHERE mri.item_code IN %(items)s GROUP BY mri.item_code""", items).items():
         out[item] += qty
+    # job work names the service, not the item: count it under the item it makes (jobwork.py)
+    from pranera_planning.jobwork import on_order as job_work_on_order
+    for chunk in _chunks(items):
+        for item, qty in job_work_on_order(chunk).items():
+            out[item] += qty
     return out
 
 

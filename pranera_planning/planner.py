@@ -290,10 +290,12 @@ def coming(project, items):
 
 def coming_open(project, items):
     """{item: qty} of the project's own coming that still needs its input: Manufacture Material
-    Requests not yet made into Work Orders (drafts too), and open Work Orders' quantity whose
-    material isn't transferred yet (qty − the larger of produced and transferred). Job work and
-    purchases are left out: a subcontracting order's input is tracked by the subcontracting
-    order itself, and bought items have no input."""
+    Requests not yet made into Work Orders (drafts too), open Work Orders' quantity whose
+    material isn't transferred yet (qty − the larger of produced and transferred), and job work
+    not yet on a Subcontracting Order (job-work requests and subcontracted Purchase Orders: the
+    project still has to make what goes to the job worker). Subcontracting Orders and purchases
+    are left out: a subcontracting order's input is tracked by the subcontracting order itself,
+    and bought items have no input."""
     out = defaultdict(float)
     if not project or not items:
         return out
@@ -311,6 +313,9 @@ def coming_open(project, items):
              AND mr.material_request_type = 'Manufacture'
             WHERE {proj} AND mri.item_code IN %(items)s GROUP BY mri.item_code""", v):
         out[item] += flt(q)
+    from pranera_planning import jobwork
+    for item, q in jobwork.coming(project, items)[0].items():
+        out[item] += q
     return out
 
 
@@ -436,8 +441,7 @@ def _propose_one(proj, lines, order_type, payload, cfg, on):
         if q > EPS:
             moved[code], moved_from[code] = q, source
             come[code] = flt(come.get(code)) - q
-            if source == MANUFACTURE:                      # only in-house coming needs its input here
-                come_open[code] = max(0.0, flt(come_open.get(code)) - q)
+            come_open[code] = max(0.0, flt(come_open.get(code)) - q)   # its input now goes with the new request
 
     kinds, types = lot_project_kinds(lots), lot_project_types(lots)
 

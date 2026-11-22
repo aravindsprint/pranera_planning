@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-22 11:45:00",
+ "exported_on": "2026-11-22 12:00:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -1115,7 +1115,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP Softflow-PRANAV-600KGS": {
    "kg_per_hour": 63.9,
@@ -1125,7 +1126,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP Softflow-RBT-1600KGS": {
    "kg_per_hour": 134.4,
@@ -1135,7 +1137,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP Softflow-RBT-25KGS": {
    "kg_per_hour": 2.2,
@@ -1145,7 +1148,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP Softflow-SHRIJI-50KGS": {
    "kg_per_hour": 4.6,
@@ -1155,7 +1159,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP Softflow-TONYS-900KGS": {
    "kg_per_hour": 82.1,
@@ -1165,7 +1170,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP-JET DYEING-TONGHUA-1200KGS": {
    "kg_per_hour": 86.3,

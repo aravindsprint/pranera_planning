@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-22 12:00:00",
+ "exported_on": "2026-11-22 12:10:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -1105,7 +1105,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP Softflow-PRANAV-300KGS": {
    "kg_per_hour": 23.1,
@@ -1181,7 +1182,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP-JET DYEING-TONGHUA-300KGS": {
    "kg_per_hour": 24.8,
@@ -1191,7 +1193,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP-JET DYEING-TONGHUA-50KGS": {
    "kg_per_hour": 4.6,
@@ -1201,7 +1204,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "HTHP-JET DYEING-TONGHUA-600KGS": {
    "kg_per_hour": 80.6,
@@ -1211,7 +1215,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": null,
+   "disabled": 1
   },
   "IL01/3428/FK": {
    "kg_per_hour": 6.3,

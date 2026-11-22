@@ -168,8 +168,9 @@
                         <button type="button" :class="{ on: r.route !== 'Job work' }" @click="setRoute(r.item, 'In-house')">In-house</button>
                         <button type="button" :class="{ on: r.route === 'Job work' }" @click="setRoute(r.item, 'Job work')">Job work</button>
                       </div>
-                      <div v-if="r.route === 'Job work' && (r.movable > 0 || r.moved > 0)" class="move">
-                        <label class="sub" :for="`mv-${r.item}`">Move from the Manufacture request to job work</label>
+                      <div v-if="r.made && (r.movable > 0 || r.moved > 0)" class="move">
+                        <label class="sub" :for="`mv-${r.item}`">{{ r.move_from === 'Job work'
+                          ? 'Move from the job-work request to in-house' : 'Move from the Manufacture request to job work' }}</label>
                         <div class="move__row">
                           <input :id="`mv-${r.item}`" v-model.number="moveQty[r.item]" type="number" min="0" :max="r.movable" step="any"
                                  class="form-input mv" :placeholder="fmt(r.movable)" />
@@ -177,7 +178,7 @@
                           <button type="button" class="linkish" @click="moveAll(r)">all</button>
                           <button type="button" class="btn btn-outline sm" @click="applyMove(r)">Apply</button>
                         </div>
-                        <div v-if="r.moved" class="sub picked">{{ fmt(r.moved) }} moved: on Create the Manufacture request is reduced by it</div>
+                        <div v-if="r.moved" class="sub picked">{{ fmt(r.moved) }} moved: on Create the {{ r.move_from === 'Job work' ? 'job-work' : 'Manufacture' }} request is reduced by it</div>
                       </div>
                       <div v-if="!r.request" class="sub">nothing to make</div>
                       <div v-else-if="r.route === 'Job work'" class="sub">
@@ -397,11 +398,12 @@ async function check() {
   }
 }
 function setRoute(item, r) {
+  if (form.routes[item] !== r) delete form.moves[item]    // a move belongs to the route it was made for
   form.routes[item] = r
-  if (r !== 'Job work') delete form.moves[item]           // a move only goes with the job-work route
   check()
 }
-// Quantity moved from the project's Manufacture request to job work (on Create the request is reduced)
+// Quantity moved from the project's Manufacture request to job work, or from its job-work request back to
+// in-house (on Create the request it came from is reduced)
 const moveQty = reactive({})
 function moveAll(r) { moveQty[r.item] = r.movable }
 function applyMove(r) {

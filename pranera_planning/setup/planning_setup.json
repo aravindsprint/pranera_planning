@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-22 12:10:00",
+ "exported_on": "2026-11-22 12:35:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -1085,7 +1085,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-50KGS - PSS"
+   "warehouse": "HTHP Soft Flow(SATHIYA)-NUVAS-50KGS - PSS",
+   "disabled": 1
   },
   "HTHP Soft Flow(SP)-NUVAS-600KGS": {
    "kg_per_hour": 112.5,
@@ -1182,8 +1183,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null,
-   "disabled": 1
+   "warehouse": "JD-4-TH1200 - PSS",
+   "disabled": 0
   },
   "HTHP-JET DYEING-TONGHUA-300KGS": {
    "kg_per_hour": 24.8,
@@ -1193,8 +1194,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null,
-   "disabled": 1
+   "warehouse": "JD-2-TH300 - PSS",
+   "disabled": 0
   },
   "HTHP-JET DYEING-TONGHUA-50KGS": {
    "kg_per_hour": 4.6,
@@ -1204,8 +1205,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null,
-   "disabled": 1
+   "warehouse": "JD-1-TH50 - PSS",
+   "disabled": 0
   },
   "HTHP-JET DYEING-TONGHUA-600KGS": {
    "kg_per_hour": 80.6,
@@ -1215,8 +1216,8 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null,
-   "disabled": 1
+   "warehouse": "JD-3-TH600 - PSS",
+   "disabled": 0
   },
   "IL01/3428/FK": {
    "kg_per_hour": 6.3,

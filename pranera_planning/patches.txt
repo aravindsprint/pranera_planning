@@ -25,3 +25,4 @@ pranera_planning.patches.add_stock_project_indexes
 pranera_planning.patches.add_stock_entry_link_indexes
 pranera_planning.patches.keep_planning_indexes
 pranera_planning.patches.add_workstation_disabled_field
+pranera_planning.patches.add_dynamic_link_indexes

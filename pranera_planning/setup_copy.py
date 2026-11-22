@@ -37,7 +37,7 @@ SKIP_SETTINGS = {"last_run", "last_run_items"}
 STD = {"name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "parent", "parentfield",
        "parenttype", "doctype", "_user_tags", "_comments", "_assign", "_liked_by", "_seen"}
 WS_FIELDS = ("planning_stage", "kg_per_hour", "planning_uom", "machine_dia", "machine_gauge", "production_capacity",
-             "warehouse")
+             "warehouse", "disabled")
 CONF_PREFIX = "project_stock_reservation_"
 LAYOUT = ("Section Break", "Column Break", "Tab Break", "HTML", "Button", "Heading", "Fold")
 

@@ -256,6 +256,11 @@ def refresh_warehouse_classification():
     return found
 
 
+def warm_warehouse_classification():
+    """after_migrate hook: refresh in a background job (migrate just cleared the cache)."""
+    _queue_warehouse_refresh()
+
+
 def _queue_warehouse_refresh():
     try:
         frappe.enqueue("pranera_planning.reservation.refresh_warehouse_classification", queue="short",

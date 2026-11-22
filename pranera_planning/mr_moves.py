@@ -132,3 +132,30 @@ def _cut(doc, rows):
             line.stock_qty, line.qty = stock, stock / cf
         keep.append(line)
     doc.set("items", keep)
+
+
+def ordered(project, items, source=MANUFACTURE):
+    """{item: [{"doc", "doctype", "qty", "started"}]}: what already holds the item's quantity on
+    `source` beyond the requests — Work Orders (in-house) or subcontracted Purchase Orders /
+    Subcontracting Orders (job work). A move can't take quantity off these: they have to be
+    cancelled (or reduced) first, and the plan says which."""
+    out = defaultdict(list)
+    if not project or not items:
+        return out
+    v = {"p": project, "items": tuple(items)}
+    if source == MANUFACTURE:
+        for r in frappe.db.sql("""SELECT name, production_item, qty - produced_qty AS open, status,
+                (material_transferred_for_manufacturing > 0 OR produced_qty > 0) AS started
+                FROM `tabWork Order` WHERE project = %(p)s AND production_item IN %(items)s AND docstatus = 1
+                AND status NOT IN ('Completed', 'Stopped', 'Closed', 'Cancelled')""", v, as_dict=True):
+            if flt(r.open) > EPS:
+                out[r.production_item].append({"doc": r.name, "doctype": "Work Order", "qty": flt(r.open), "started": bool(r.started)})
+        return out
+    if frappe.db.has_column("Purchase Order Item", "fg_item"):
+        for r in frappe.db.sql("""SELECT po.name, poi.fg_item, IFNULL(NULLIF(poi.fg_item_qty, 0), poi.stock_qty) AS qty
+                FROM `tabPurchase Order Item` poi
+                JOIN `tabPurchase Order` po ON po.name = poi.parent AND po.docstatus = 1 AND IFNULL(po.is_subcontracted, 0) = 1
+                 AND po.status NOT IN ('Completed', 'Closed', 'Cancelled', 'Delivered')
+                WHERE poi.project = %(p)s AND poi.fg_item IN %(items)s""", v, as_dict=True):
+            out[r.fg_item].append({"doc": r.name, "doctype": "Purchase Order", "qty": flt(r.qty), "started": False})
+    return out

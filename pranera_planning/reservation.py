@@ -63,6 +63,7 @@ project_stock_reservation_roll_field                   Stock Entry Detail field 
                                                        default "custom_roll_no"
 """
 import re
+import time
 from collections import defaultdict
 
 import frappe
@@ -225,21 +226,45 @@ def non_pool_warehouses():
     Site config project_stock_reservation_pool_warehouses forces warehouses back in.
     The name prefixes in excluded_prefixes() apply on top of this.
 
-    Cached for an hour; cleared when a Work Order or Subcontracting Order is submitted.
+    Kept in the cache without expiry and refreshed in the background once it is over an hour
+    old (or when a Work Order / Subcontracting Order names a warehouse it hasn't classified):
+    working it out scans every Work Order, Subcontracting Order and Sales Order line — 14 s on
+    erptest — and a stock entry must never wait for that. Only the very first call on a site
+    (nothing cached yet) works it out in the request.
     """
     # Memoised in frappe.local too: callers ask once per Bin row (thousands in a re-order run).
     local = frappe.local.cache
     if local.get(WAREHOUSE_CACHE_KEY) is not None:
         return local[WAREHOUSE_CACHE_KEY]
-    cache = frappe.cache()
-    # expires=True is required: without it Frappe remembers the first miss (None) in
-    # frappe.local, and set_value with expires_in_sec never overwrites that, so every
-    # later call in the same request/job missed and re-ran the queries below.
-    found = cache.get_value(WAREHOUSE_CACHE_KEY, expires=True)
-    if found is not None:
-        local[WAREHOUSE_CACHE_KEY] = found
-        return found
+    cached = frappe.cache().get_value(WAREHOUSE_CACHE_KEY, expires=True)
+    if isinstance(cached, dict) and isinstance(cached.get("found"), dict):
+        if time.time() - flt(cached.get("at")) > WAREHOUSE_CACHE_TTL:
+            _queue_warehouse_refresh()
+        local[WAREHOUSE_CACHE_KEY] = cached["found"]
+        return cached["found"]
+    return refresh_warehouse_classification()
 
+
+WAREHOUSE_CACHE_TTL = 3600
+
+
+def refresh_warehouse_classification():
+    """Work out non_pool_warehouses() now and keep it (no expiry: see non_pool_warehouses)."""
+    found = _classify_warehouses()
+    frappe.cache().set_value(WAREHOUSE_CACHE_KEY, {"found": found, "at": time.time()})
+    frappe.local.cache[WAREHOUSE_CACHE_KEY] = found
+    return found
+
+
+def _queue_warehouse_refresh():
+    try:
+        frappe.enqueue("pranera_planning.reservation.refresh_warehouse_classification", queue="short",
+                       job_id="pranera_planning:warehouse_classification", deduplicate=True, enqueue_after_commit=True)
+    except Exception:
+        frappe.log_error(title="Warehouse classification refresh not queued")
+
+
+def _classify_warehouses():
     def counts(q):
         return {w: n for w, n in frappe.db.sql(q) if w}
 
@@ -291,9 +316,6 @@ def non_pool_warehouses():
     found.update({w: "Excluded" for w in frappe.conf.get("project_stock_reservation_excluded_warehouses") or []})
     for w in frappe.conf.get("project_stock_reservation_pool_warehouses") or []:
         found.pop(w, None)
-
-    cache.set_value(WAREHOUSE_CACHE_KEY, found, expires_in_sec=3600)
-    local[WAREHOUSE_CACHE_KEY] = found
     return found
 
 
@@ -302,10 +324,19 @@ def _looks_like_wip(warehouse):
 
 
 def clear_warehouse_cache(doc=None, method=None):
-    """doc_events hook: a newly submitted Work Order / Subcontracting Order may name a new
-    WIP or supplier warehouse."""
-    frappe.cache().delete_value(WAREHOUSE_CACHE_KEY)
-    frappe.local.cache.pop(WAREHOUSE_CACHE_KEY, None)
+    """doc_events hook (Work Order / Subcontracting Order on_submit), and a full reset when
+    called without a document. A submitted order only triggers a background refresh, and only
+    when it names a WIP or supplier warehouse not classified yet: re-working the classification
+    after every order made the next stock entry wait 14 s."""
+    if doc is None:
+        frappe.cache().delete_value(WAREHOUSE_CACHE_KEY)
+        frappe.local.cache.pop(WAREHOUSE_CACHE_KEY, None)
+        return
+    named = {doc.get("wip_warehouse"), doc.get("supplier_warehouse")} - {None, ""}
+    cached = frappe.cache().get_value(WAREHOUSE_CACHE_KEY, expires=True)
+    known = (cached or {}).get("found") if isinstance(cached, dict) else None
+    if known is None or any(w not in known for w in named):
+        _queue_warehouse_refresh()
 
 
 def warehouse_place(warehouse):

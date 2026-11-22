@@ -1,5 +1,5 @@
 {
- "exported_on": "2026-11-21 12:30:00",
+ "exported_on": "2026-11-22 11:45:00",
  "from_site": "erptest.pranera.in",
  "reorder_settings": {
   "default_cover_days": 30,
@@ -1005,7 +1005,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": "HTHP JET DYEING(REVATHI)-TONYSS-300KGS - PSS"
   },
   "HTHP SOFTLOW-MARVEL-1200KGS": {
    "kg_per_hour": 109.5,
@@ -1015,7 +1015,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": "HTHP SOFTLOW(REVATHI)-MARVEL-1200KGS - PSS"
   },
   "HTHP SOFTLOW-PROTEX-1000KGS": {
    "kg_per_hour": 91.2,
@@ -1025,7 +1025,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": "HTHP SOFTLOW(REVATHI)-PROTEX-1000KGS - PSS"
   },
   "HTHP SOFTLOW-PROTEX-750KGS": {
    "kg_per_hour": 68.4,
@@ -1035,7 +1035,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": "HTHP SOFTLOW(REVATHI)-PROTEX-750KGS - PSS"
   },
   "HTHP SOFTLOW-TONYSS-900KGS": {
    "kg_per_hour": 82.1,
@@ -1045,7 +1045,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": null
+   "warehouse": "HTHP SOFTLOW(REVATHI)-TONYSS-900KGS - PSS"
   },
   "HTHP Soft Flow(SP)-NUVAS-100KGS": {
    "kg_per_hour": 10.5,
@@ -1105,7 +1105,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-PRANAV-1000KGS - PSS"
+   "warehouse": null
   },
   "HTHP Softflow-PRANAV-300KGS": {
    "kg_per_hour": 23.1,
@@ -1115,7 +1115,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-PRANAV-300KGS - PSS"
+   "warehouse": null
   },
   "HTHP Softflow-PRANAV-600KGS": {
    "kg_per_hour": 63.9,
@@ -1125,7 +1125,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-PRANAV-600KGS - PSS"
+   "warehouse": null
   },
   "HTHP Softflow-RBT-1600KGS": {
    "kg_per_hour": 134.4,
@@ -1135,7 +1135,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-RBT-1600KGS - PSS"
+   "warehouse": null
   },
   "HTHP Softflow-RBT-25KGS": {
    "kg_per_hour": 2.2,
@@ -1145,7 +1145,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-RBT-25KGS - PSS"
+   "warehouse": null
   },
   "HTHP Softflow-SHRIJI-50KGS": {
    "kg_per_hour": 4.6,
@@ -1155,7 +1155,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-SHRIJI-50KGS - PSS"
+   "warehouse": null
   },
   "HTHP Softflow-TONYS-900KGS": {
    "kg_per_hour": 82.1,
@@ -1165,7 +1165,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "HTHP Softflow-TONYS-900KGS - PSS"
+   "warehouse": null
   },
   "HTHP-JET DYEING-TONGHUA-1200KGS": {
    "kg_per_hour": 86.3,
@@ -1175,7 +1175,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "JD-4-TH1200 - PSS"
+   "warehouse": null
   },
   "HTHP-JET DYEING-TONGHUA-300KGS": {
    "kg_per_hour": 24.8,
@@ -1185,7 +1185,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "JD-2-TH300 - PSS"
+   "warehouse": null
   },
   "HTHP-JET DYEING-TONGHUA-50KGS": {
    "kg_per_hour": 4.6,
@@ -1195,7 +1195,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "JD-1-TH50 - PSS"
+   "warehouse": null
   },
   "HTHP-JET DYEING-TONGHUA-600KGS": {
    "kg_per_hour": 80.6,
@@ -1205,7 +1205,7 @@
    "planning_stage": "Dyeing",
    "planning_uom": "Kgs",
    "production_capacity": 1,
-   "warehouse": "JD-3-TH600 - PSS"
+   "warehouse": null
   },
   "IL01/3428/FK": {
    "kg_per_hour": 6.3,

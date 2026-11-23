@@ -110,7 +110,11 @@ scheduler_events = {
 
 # migrate clears the cache: work the warehouse classification out again in the background, so the
 # first stock entry after a deploy doesn't wait for it (14 s on erptest; see reservation.py).
-after_migrate = ["pranera_planning.reservation.warm_warehouse_classification"]
+after_migrate = [
+    "pranera_planning.reservation.warm_warehouse_classification",
+    # ERPNext v16 has a standard Workstation "disabled": drop our v15 custom field then
+    "pranera_planning.patches.add_workstation_disabled_field.drop_if_standard",
+]
 
 # A fresh install marks every patch as already run, so run the one-off setup directly too.
 after_install = [

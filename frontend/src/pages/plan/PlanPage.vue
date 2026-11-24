@@ -413,6 +413,9 @@ const moveQty = reactive({})
 function moveAll(r) { moveQty[r.item] = r.movable }
 function applyMove(r) {
   const q = Math.max(0, Math.min(Number(moveQty[r.item]) || 0, r.movable))
+  // the route shown may be the stage's default, not one the user clicked: the server only
+  // moves quantity for a route it was sent, so send the shown one with the move
+  if (q > 0 && !form.routes[r.item] && r.route) form.routes[r.item] = r.route
   if (q > 0) form.moves[r.item] = q
   else delete form.moves[r.item]
   check()

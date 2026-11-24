@@ -8,7 +8,7 @@ from frappe.utils import flt
 from pranera_planning.reservation import (
     batch_items, free_stock,
     get_batch_operations, get_elsewhere_qty, get_issue_lines, get_produced_batches, project_sco_items,
-    get_reservation_state, reservations_at, roll_tracked_items, stage_of, stage_rank,
+    get_reservation_state, reservations_at, roll_tracked_items, stage_label, stage_rank,
 )
 from pranera_planning.reservation_math import EPS, location_summary, same_project
 
@@ -207,7 +207,7 @@ def _batch_rows(project, batches, qty_field):
             "batch_no": b.batch_no,
             "received_qty": flt(b.get(qty_field)),
             "made_by": b.get("made_by"),
-            "stage": stage_of(b.item_code, b.get("item_group"), operations.get(b.batch_no)) if produced else None,
+            "stage": stage_label(b.item_code, b.get("item_group"), operations.get(b.batch_no)) if produced else None,
             "stage_rank": stage_rank(b.item_code) if produced else None,
             "operation": operations.get(b.batch_no),
             "elsewhere": elsewhere.get(b.batch_no, {}),
@@ -274,7 +274,7 @@ def _order_flow(project):
         ):
             items[r.parent].append(r)
         for w in wos:
-            key = (stage_rank(w.production_item), stage_of(w.production_item, w.item_group, last_op.get(w.name)), w.stock_uom)
+            key = (stage_rank(w.production_item), stage_label(w.production_item, w.item_group, last_op.get(w.name)), w.stock_uom)
             f = flow[key]
             f["orders"].add(w.name)
             open_order = w.status not in DONE_STATUSES
@@ -304,7 +304,7 @@ def _order_flow(project):
         ):
             supplied[r.reference_name].append(r)
         for x in scos:
-            key = (stage_rank(x.item_code), stage_of(x.item_code, x.item_group), x.stock_uom)
+            key = (stage_rank(x.item_code), stage_label(x.item_code, x.item_group), x.stock_uom)
             f = flow[key]
             f["orders"].add(x.parent)
             open_order = x.status not in DONE_STATUSES

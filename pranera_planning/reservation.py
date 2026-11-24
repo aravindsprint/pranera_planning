@@ -160,6 +160,31 @@ def stage_of(item_code, item_group=None, operation=None):
     return item_group or "Other"
 
 
+KNIT_ITEM_TYPES = ("Collar", "Cuff")
+
+
+def stage_label(item_code, item_group=None, operation=None):
+    """stage_of() for showing stages side by side (project overview, project stock): collar
+    and cuff knitting is "Collar Knitting" / "Cuff Knitting" whichever way it was made.
+    In-house the operation says so (COLLAR KNITTING); job work has no operation and the GKF
+    prefix alone says "Knitting", so the item's type (Item.custom_item_type) decides.
+    Not for settings lookups: stage days and services stay keyed by stage_of()."""
+    label = stage_of(item_code, item_group, operation)
+    if label == "Knitting":
+        kind = _knit_item_type(item_code)
+        if kind:
+            return f"{kind} Knitting"
+    return label
+
+
+def _knit_item_type(item_code):
+    """"Collar" / "Cuff" from the item's type, else None."""
+    if not item_code or not frappe.db.has_column("Item", "custom_item_type"):
+        return None
+    kind = frappe.get_cached_value("Item", item_code, "custom_item_type")
+    return kind if kind in KNIT_ITEM_TYPES else None
+
+
 def stage_rank(item_code):
     """Position in the process by item code prefix (GKF 0, DKF 1, SKF 2, ...), 99 if unknown.
     Stages of the same rank (Knitting, Collar Knitting, Cuff Knitting) run side by side."""
@@ -448,7 +473,8 @@ def project_sco_items(project):
 
 def get_produced_batches(project):
     """Batches produced for `project`: [{item_code, item_name, item_group, stock_uom, batch_no,
-    produced_qty, made_by}]. Made by its Work Orders (Manufacture) or its Subcontracting
+    produced_qty, made_by}]. Made by its Work Orders (Manufacture: the finished item and any
+    batch-tracked co-product, such as a rib dyed with the fabric) or its Subcontracting
     Receipts (via the receipt item's project, else its Subcontracting Order / Purchase Order
     item's)."""
     # Look the vouchers up first with simple indexed queries: an OR of the two routes in one
@@ -482,7 +508,7 @@ def get_produced_batches(project):
                  ON sbb.voucher_type = 'Stock Entry' AND sbb.voucher_no = sed.parent AND sbb.voucher_detail_no = sed.name
                 AND sbb.docstatus = 1 AND sbb.is_cancelled = 0
                JOIN `tabSerial and Batch Entry` sbe ON sbe.parent = sbb.name AND sbe.qty > 0
-               WHERE sed.parent IN %(entries)s AND sed.is_finished_item = 1
+               WHERE sed.parent IN %(entries)s AND (sed.is_finished_item = 1 OR sed.is_scrap_item = 1)
                GROUP BY sed.item_code, sbe.batch_no""",
             {"entries": tuple(entries)}, as_dict=True,
         )
@@ -779,7 +805,8 @@ def get_batch_operations(batch_nos):
                  ON sbb.name = sbe.parent AND sbb.voucher_type = 'Stock Entry'
                 AND sbb.docstatus = 1 AND sbb.is_cancelled = 0
                JOIN `tabStock Entry` se ON se.name = sbb.voucher_no AND se.purpose = 'Manufacture'
-               JOIN `tabStock Entry Detail` sed ON sed.name = sbb.voucher_detail_no AND sed.is_finished_item = 1
+               JOIN `tabStock Entry Detail` sed ON sed.name = sbb.voucher_detail_no
+                AND (sed.is_finished_item = 1 OR sed.is_scrap_item = 1)
                WHERE sbe.batch_no IN %(batches)s AND sbe.qty > 0 AND IFNULL(se.work_order, '') <> ''""",
             {"batches": tuple(missing)},
         ):

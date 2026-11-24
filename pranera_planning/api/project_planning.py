@@ -9,7 +9,7 @@ from frappe import _
 from frappe.utils import flt
 
 from pranera_planning import planner
-from pranera_planning.reservation import EPS, get_reservation_state, project_sco_items, same_project, stage_of
+from pranera_planning.reservation import EPS, get_reservation_state, project_sco_items, same_project, stage_label
 
 MTS, MTO = planner.MTS, planner.MTO
 
@@ -153,7 +153,7 @@ def get_overview(project):
                                   pluck="item"))
         for item, q in come_all.items():
             if item in made:
-                planned[stage_of(item, groups.get(item)) or ""] += flt(q)
+                planned[stage_label(item, groups.get(item)) or ""] += flt(q)
     seen = set()
     for st in stages:
         label = str(st.get("stage") or "").split(" (")[0]

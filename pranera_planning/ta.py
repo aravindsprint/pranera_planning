@@ -103,34 +103,42 @@ def _one(sql, args):
         return (None, None, None)
 
 
+# Who the submitted Purchase Orders went to; the plan's supplier was only a proposal.
+SUPPLIERS = "GROUP_CONCAT(DISTINCT po.supplier ORDER BY po.supplier SEPARATOR ', ')"
+
+
 def actual_for(project, act):
     """{"start", "end", "done_qty"} for one activity, from the project's documents."""
     item, kind, route = act.get("item_code"), act.get("kind"), act.get("route")
     if not item or kind == ta_math.MILESTONE:
         return {}
     a = {"item": item, "project": project}
+    supplier = None
     if kind == ta_math.STAGE and route != "Job work":
         start, end, qty = _one("""SELECT MIN(actual_start_date), MAX(actual_end_date), SUM(produced_qty)
             FROM `tabWork Order` WHERE production_item = %(item)s AND project = %(project)s AND docstatus = 1""", a)
     elif kind == ta_math.STAGE:
         fg = "poi.fg_item" if _has("Purchase Order Item", "fg_item") else "poi.item_code"
-        start = _one(f"""SELECT MIN(po.transaction_date), NULL, NULL FROM `tabPurchase Order Item` poi
+        start, supplier, _x = _one(f"""SELECT MIN(po.transaction_date), {SUPPLIERS}, NULL FROM `tabPurchase Order Item` poi
             JOIN `tabPurchase Order` po ON po.name = poi.parent AND po.docstatus = 1 AND IFNULL(po.is_subcontracted, 0) = 1
-            WHERE {fg} = %(item)s AND poi.project = %(project)s""", a)[0]
+            WHERE {fg} = %(item)s AND poi.project = %(project)s""", a)
         on = "sri.project" if _has("Subcontracting Receipt Item", "project") else "sr.project"
         end, qty, _x = _one(f"""SELECT MAX(sr.posting_date), SUM(sri.qty), NULL FROM `tabSubcontracting Receipt Item` sri
             JOIN `tabSubcontracting Receipt` sr ON sr.name = sri.parent AND sr.docstatus = 1
             WHERE sri.item_code = %(item)s AND {on} = %(project)s""", a)
     else:
-        start = _one("""SELECT MIN(po.transaction_date), NULL, NULL FROM `tabPurchase Order Item` poi
+        start, supplier, _x = _one(f"""SELECT MIN(po.transaction_date), {SUPPLIERS}, NULL FROM `tabPurchase Order Item` poi
             JOIN `tabPurchase Order` po ON po.name = poi.parent AND po.docstatus = 1 AND IFNULL(po.is_subcontracted, 0) = 0
-            WHERE poi.item_code = %(item)s AND poi.project = %(project)s""", a)[0]
+            WHERE poi.item_code = %(item)s AND poi.project = %(project)s""", a)
         end, qty, _x = _one("""SELECT MAX(pr.posting_date), SUM(pri.stock_qty), NULL FROM `tabPurchase Receipt Item` pri
             JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
             WHERE pri.item_code = %(item)s AND pri.project = %(project)s""", a)
     if qty and not start:
         start = end
-    return {"start": start, "end": end, "done_qty": flt(qty)}
+    out = {"start": start, "end": end, "done_qty": flt(qty)}
+    if supplier:
+        out["supplier"] = supplier
+    return out
 
 
 def view(project):
@@ -143,7 +151,12 @@ def view(project):
     rows = []
     for r in doc.activities:
         a = _plain(r)
-        st = ta_math.status_of(a, actual_for(project, a), on)
+        actual = actual_for(project, a)
+        st = ta_math.status_of(a, actual, on)
+        if actual.get("supplier"):
+            # the order decides who supplies; keep the planned one for comparison
+            st["planned_supplier"] = a.get("supplier")
+            st["supplier"] = actual["supplier"]
         if a.get("kind") == ta_math.MILESTONE:
             st["actual_start"] = a.get("actual_start") or st["actual_start"]
         rows.append({**a, **st})
@@ -183,6 +196,9 @@ def save(project, rows):
         ps, pe = r.get("planned_start"), r.get("planned_end")
         if ps and pe and getdate(pe) < getdate(ps):
             frappe.throw(_("{0}: the planned end can't be before the planned start.").format(r.get("activity") or ""))
+        if "planned_supplier" in r:
+            # the shown supplier came from the Purchase Orders; store what the plan had
+            r = {**r, "supplier": r.get("planned_supplier")}
         cur = by_name.get(r.get("name"))
         if cur:
             for k in EDITABLE:

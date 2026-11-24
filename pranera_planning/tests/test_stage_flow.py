@@ -69,6 +69,23 @@ class TestStageFlow(unittest.TestCase):
         self.assertTrue(out[0]["shared_step"])
         self.assertFalse(out[2]["shared_step"])
 
+    def test_co_product_counts_as_produced(self):
+        # dyeing: 50 kg greige fabric + 5 kg rib in; 50 kg dyed fabric + 7.5 kg dyed rib (a co-product) out
+        rows = [produced("Double Dyeing", 1, "Kgs", 50), produced("Double Dyeing", 1, "Kgs", 7.5)]
+        d = self.stages(rows, {(1, "Double Dyeing", "Kgs"): flow(55)})["Double Dyeing"]
+        self.assertEqual((d["produced_qty"], d["batches"], d["loss_qty"]), (57.5, 2, -2.5))
+
+    def test_collar_knitting_one_label_in_house_and_job_work(self):
+        frappe = sys.modules["frappe"]
+        types_ = {"GKF11807/GREIGE": "Collar", "GKF11808/GREY": "Cuff", "GKF12312/GREIGE": "Fabric"}
+        frappe.get_cached_value = lambda dt, name, field: types_.get(name)
+        R = sys.modules["pranera_planning.reservation"]
+        self.assertEqual(R.stage_label("GKF11807/GREIGE", None, "COLLAR KNITTING"), "Collar Knitting")  # in-house
+        self.assertEqual(R.stage_label("GKF11807/GREIGE"), "Collar Knitting")                        # job work
+        self.assertEqual(R.stage_label("GKF11808/GREY"), "Cuff Knitting")
+        self.assertEqual(R.stage_label("GKF12312/GREIGE"), "Knitting")
+        self.assertEqual(R.stage_of("GKF11807/GREIGE"), "Knitting")       # settings keep the plain stage
+
 
 if __name__ == "__main__":
     unittest.main()

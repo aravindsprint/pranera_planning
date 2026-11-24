@@ -70,7 +70,7 @@
                   <input v-if="r.source !== 'plan'" v-model.trim="r.activity" class="form-input" :aria-label="`Milestone ${r.seq || ''} name`" />
                   <template v-else><div class="item">{{ r.activity }}</div><div class="sub">{{ r.item_code }}</div></template>
                 </td>
-                <td class="sub">{{ by(r) }}
+                <td class="sub" :title="r.planned_supplier && r.planned_supplier !== r.supplier ? `Planned: ${r.planned_supplier}` : null">{{ by(r) }}
                   <a v-if="r.kind === 'Stage' && r.route === 'In-house' && !r.workstation && r.status !== 'Done'"
                      class="book" :href="`${APP_BASE}/workstation-board`">Book a machine</a></td>
                 <td class="num">
@@ -128,7 +128,12 @@ const day = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleD
 const editable = (list) => JSON.stringify(list.map((r) => [r.name, r.activity, r.planned_start, r.planned_end, r.actual_end, r.remarks]))
 const isLate = (r) => r.status !== 'Done' && (r.delay_days > 0 || r.late_start)
 const finishLate = computed(() => data.value?.summary?.finish && data.value.deliver_on && data.value.summary.finish > data.value.deliver_on)
-const by = (r) => (r.kind === 'Milestone' ? '' : [r.route, r.workstation || r.supplier || r.service].filter(Boolean).join(' · '))
+// who does it: the machine, else the supplier the orders went to (else the plan's), and the job-work service
+const by = (r) => (r.kind === 'Milestone' ? '' : [
+  r.route,
+  r.workstation || r.supplier,
+  r.service && (r.route === 'Job work' || !(r.workstation || r.supplier)) ? r.service : null,
+].filter(Boolean).join(' · '))
 const badge = (r) => (r.status === 'Done' ? 'badge-success' : isLate(r) ? 'badge-danger' : r.status === 'In progress' ? 'badge-info' : 'badge-muted')
 
 // timeline scale: from the earliest date to a little after the last

@@ -48,12 +48,18 @@ def ensure(doc=None, method=None):
 
 
 def apply(*args, **kwargs):
-    """Put the two-query version on ERPNext's Project class (idempotent)."""
+    """Put the two-query version on ERPNext's Project class (idempotent).
+
+    Runs before every request and job, so it must never raise: an ERPNext whose Project has no
+    get_stock_entry_additional_costs (other versions compute the cost elsewhere) is left alone.
+    Raising here made every request on that site fail (24 Nov 2026)."""
     try:
         from erpnext.projects.doctype.project.project import Project
+
+        current = getattr(Project, "get_stock_entry_additional_costs", None)
+        if current is None or getattr(current, "_pranera_split", False):
+            return
+        get_stock_entry_additional_costs._pranera_split = True
+        Project.get_stock_entry_additional_costs = get_stock_entry_additional_costs
     except Exception:
-        return
-    if getattr(Project.get_stock_entry_additional_costs, "_pranera_split", False):
-        return
-    get_stock_entry_additional_costs._pranera_split = True
-    Project.get_stock_entry_additional_costs = get_stock_entry_additional_costs
+        pass
